@@ -12,8 +12,11 @@ const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 /**
  * POST /api/decode-barcode
- * Primary: Gemini 1.5 Flash (AI Vision)
- * Secondary: OCR.space (Traditional OCR)
+ * Robust AI Vision with Failover:
+ * 1. Gemini 1.5 Flash
+ * 2. Gemini 1.5 Flash Latest
+ * 3. Gemini Pro Vision
+ * 4. Fallback: OCR.space
  */
 router.post('/', async (req, res) => {
     try {
@@ -30,68 +33,78 @@ router.post('/', async (req, res) => {
         let extractedData = null;
         let sourceUsed = '';
 
-        // --- ATTEMPT 1: GEMINI AI VISION ---
-        try {
-            console.log('🤖 Backend: Intentando Gemini AI Vision...');
+        // List of models to try in order of preference/speed
+        const modelsToTry = [
+            "gemini-1.5-flash",
+            "gemini-1.5-flash-latest",
+            "gemini-pro-vision"
+        ];
 
-            // Use gemini-1.5-flash
-            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        // --- ATTEMPT 1: GEMINI AI VISION (Multi-Model) ---
+        for (const modelName of modelsToTry) {
+            try {
+                console.log(`🤖 Backend: Intentando con modelo ${modelName}...`);
+                const model = genAI.getGenerativeModel({ model: modelName });
 
-            const prompt = `
-            Analiza esta imagen (INE mexicana).
-            Extrae JSON estricto con: curp, fullName, claveElector, fechaNacimiento (DD/MM/AAAA), sexo, seccion, address.
-            Si no lees algo, déjalo vacío.
-            Si hay códigos de barras (PDF417/QR), úsalos para validar datos.
-            Responde SOLO JSON.
-            `;
+                const prompt = `
+                Analiza esta imagen (INE mexicana).
+                Extrae JSON estricto con: curp, fullName, claveElector, fechaNacimiento (DD/MM/AAAA), sexo, seccion, address.
+                Si no lees algo, déjalo vacío.
+                Responde SOLO JSON.
+                `;
 
-            const result = await model.generateContent([
-                prompt,
-                { inlineData: { data: base64Data, mimeType: "image/jpeg" } }
-            ]);
+                const result = await model.generateContent([
+                    prompt,
+                    { inlineData: { data: base64Data, mimeType: "image/jpeg" } }
+                ]);
 
-            const response = await result.response;
-            const text = response.text();
-            console.log("🤖 Gemini respuesta:", text.substring(0, 100) + "...");
+                const response = await result.response;
+                const text = response.text();
 
-            const jsonStr = text.replace(/```json/g, '').replace(/```/g, '').trim();
-            extractedData = JSON.parse(jsonStr);
-            sourceUsed = 'GEMINI_AI';
+                // If we got here, it worked!
+                console.log(`✅ Gemini (${modelName}) éxito:`, text.substring(0, 50) + "...");
 
-            // Validate minimal data found
-            extractedData.dataFound = !!(extractedData.curp || extractedData.fullName);
+                const jsonStr = text.replace(/```json/g, '').replace(/```/g, '').trim();
+                extractedData = JSON.parse(jsonStr);
+                sourceUsed = `GEMINI_${modelName.toUpperCase()}`;
+                extractedData.dataFound = !!(extractedData.curp || extractedData.fullName);
 
-        } catch (geminiError) {
-            console.error('⚠️ Gemini falló, intentando fallback OCR:', geminiError.message);
-            // Don't crash, proceed to fallback
+                break; // Stop trying models
+            } catch (modelError) {
+                console.warn(`⚠️ Falló modelo ${modelName}:`, modelError.message);
+                // Continue to next model
+            }
         }
 
         // --- ATTEMPT 2: OCR.SPACE FALLBACK ---
-        // Run this if Gemini failed OR returned empty data
         if (!extractedData || !extractedData.dataFound) {
             console.log('📷 Backend: Fallback a OCR.space...');
 
-            const formData = new FormData();
-            formData.append('apikey', OCR_SPACE_API_KEY);
-            formData.append('base64Image', `data:image/jpeg;base64,${base64Data}`);
-            formData.append('language', 'spa');
-            formData.append('isOverlayRequired', 'false');
-            formData.append('OCREngine', '2');
-            formData.append('scale', 'true');
+            try {
+                const formData = new FormData();
+                formData.append('apikey', OCR_SPACE_API_KEY);
+                formData.append('base64Image', `data:image/jpeg;base64,${base64Data}`);
+                formData.append('language', 'spa');
+                formData.append('isOverlayRequired', 'false');
+                formData.append('OCREngine', '2');
+                formData.append('scale', 'true');
 
-            const ocrResponse = await fetch('https://api.ocr.space/parse/image', {
-                method: 'POST',
-                body: formData,
-                headers: formData.getHeaders()
-            });
+                const ocrResponse = await fetch('https://api.ocr.space/parse/image', {
+                    method: 'POST',
+                    body: formData,
+                    headers: formData.getHeaders()
+                });
 
-            const ocrResult = await ocrResponse.json();
+                const ocrResult = await ocrResponse.json();
 
-            if (!ocrResult.IsErroredOnProcessing && ocrResult.ParsedResults?.[0]?.ParsedText) {
-                const ocrText = ocrResult.ParsedResults[0].ParsedText;
-                console.log('📝 OCR fallback text:', ocrText.substring(0, 100));
-                extractedData = extractDataFromText(ocrText);
-                sourceUsed = 'OCR_SPACE_FALLBACK';
+                if (!ocrResult.IsErroredOnProcessing && ocrResult.ParsedResults?.[0]?.ParsedText) {
+                    const ocrText = ocrResult.ParsedResults[0].ParsedText;
+                    console.log('📝 OCR fallback text:', ocrText.substring(0, 100));
+                    extractedData = extractDataFromText(ocrText);
+                    sourceUsed = 'OCR_SPACE_FALLBACK';
+                }
+            } catch (ocrError) {
+                console.error('❌ OCR.space fatal:', ocrError);
             }
         }
 
@@ -103,9 +116,9 @@ router.post('/', async (req, res) => {
                 source: sourceUsed
             });
         } else {
-            console.log('❌ Falló extracción en ambos métodos');
+            console.log('❌ Falló extracción en todos los métodos');
             res.json({
-                success: false,
+                success: false, // Make sure frontend sees it as failure if no data
                 message: 'No se pudieron extraer datos'
             });
         }

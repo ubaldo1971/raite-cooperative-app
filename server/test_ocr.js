@@ -53,5 +53,5 @@ async function testGemini(imagePath) {
     }
 }
 
-const imagePath = 'C:/Users/Broly/.gemini/antigravity/brain/65cd7944-cbbd-4a66-b747-afc590fab22a/uploaded_image_1766876281312.jpg';
+const imagePath = 'C:/Users/Broly/.gemini/antigravity/brain/65cd7944-cbbd-4a66-b747-afc590fab22a/uploaded_image_1766878376009.jpg';
 testGemini(imagePath);
