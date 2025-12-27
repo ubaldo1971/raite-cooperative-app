@@ -100,7 +100,7 @@ const Register = () => {
             } else {
                 console.log("⚠️ No barcode found, user can enter manually");
                 // DEBUG: Show alert on mobile for testing
-                // alert("DEBUG: No barcode detected. Tried: Native BarcodeDetector, ZXing PDF417, ZXing MultiFormat");
+                setScanStatus('No se detectó código');
             }
         }
     };
