@@ -45,7 +45,7 @@ const RegisterLicense = () => {
         try {
             setProcessingMessage('Procesando Licencia de Manejo...');
 
-            const response = await fetch('http://localhost:3000/api/ocr/license', {
+            const response = await fetch('/api/ocr/license', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -113,7 +113,7 @@ const RegisterLicense = () => {
 
             console.log('📤 Enviando registro con licencia...');
 
-            const response = await fetch('http://localhost:3000/api/users/register-license', {
+            const response = await fetch('/api/users/register-license', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)

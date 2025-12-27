@@ -37,10 +37,8 @@ const Welcome = () => {
     const getUserProfileImage = () => {
         const imageUrl = userData?.profile_image || userData?.selfie_image;
         if (imageUrl) {
-            if (imageUrl.startsWith('/')) {
-                return `http://localhost:3000${imageUrl}`;
-            }
-            return imageUrl;
+            // In production, relative URLs work because frontend/backend share same origin
+            return imageUrl.startsWith('http') ? imageUrl : imageUrl;
         }
         return null;
     };
@@ -75,7 +73,7 @@ const Welcome = () => {
         setIsLoggingIn(true);
 
         try {
-            const response = await fetch('http://localhost:3000/api/users/login', {
+            const response = await fetch('/api/users/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

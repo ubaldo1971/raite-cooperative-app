@@ -63,7 +63,7 @@ const RegisterManual = () => {
 
             console.log('📤 Enviando registro manual:', payload);
 
-            const response = await fetch('http://localhost:3000/api/users/register-ine', {
+            const response = await fetch('/api/users/register-ine', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -224,8 +224,8 @@ const RegisterManual = () => {
                             onClick={() => setStep(1)}
                             disabled={!isFormValid()}
                             className={`w-full py-4 rounded-xl font-bold text-white transition-all ${isFormValid()
-                                    ? 'bg-gradient-to-r from-orange-500 to-pink-500 hover:opacity-90'
-                                    : 'bg-gray-300 dark:bg-slate-700 cursor-not-allowed'
+                                ? 'bg-gradient-to-r from-orange-500 to-pink-500 hover:opacity-90'
+                                : 'bg-gray-300 dark:bg-slate-700 cursor-not-allowed'
                                 }`}
                         >
                             Continuar con Selfie

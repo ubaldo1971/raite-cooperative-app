@@ -50,7 +50,7 @@ const RegisterUnified = () => {
     const detectDocumentType = async (frontImage) => {
         setProcessingMessage('Analizando documento...');
         try {
-            const response = await fetch('http://localhost:3000/api/ocr/detect-type', {
+            const response = await fetch('/api/ocr/detect-type', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ frontImage })
@@ -89,8 +89,8 @@ const RegisterUnified = () => {
 
         try {
             const endpoint = documentType === 'license'
-                ? 'http://localhost:3000/api/ocr/license'
-                : 'http://localhost:3000/api/ocr/ine';
+                ? '/api/ocr/license'
+                : '/api/ocr/ine';
 
             const response = await fetch(endpoint, {
                 method: 'POST',
@@ -178,8 +178,8 @@ const RegisterUnified = () => {
 
         try {
             const endpoint = documentType === 'license'
-                ? 'http://localhost:3000/api/users/register-license'
-                : 'http://localhost:3000/api/users/register-ine';
+                ? '/api/users/register-license'
+                : '/api/users/register-ine';
 
             const basePayload = {
                 fullName: ocrData.fullName,

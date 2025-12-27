@@ -548,12 +548,12 @@ export const Profile = () => {
         const fetchUser = async () => {
             try {
                 // Mock ID 1 for demo
-                const response = await fetch('http://localhost:3000/api/users/1');
+                const response = await fetch('/api/users/1');
                 if (response.ok) {
                     const data = await response.json();
                     setUser(data);
                     if (data.profile_image) {
-                        setProfileImage(data.profile_image.startsWith('http') ? data.profile_image : `http://localhost:3000${data.profile_image}`);
+                        setProfileImage(data.profile_image.startsWith('http') ? data.profile_image : data.profile_image);
                     }
                 }
             } catch (err) {
@@ -588,14 +588,14 @@ export const Profile = () => {
         formData.append('avatar', file);
 
         try {
-            const response = await fetch('http://localhost:3000/api/users/1/avatar', {
+            const response = await fetch('/api/users/1/avatar', {
                 method: 'POST',
                 body: formData
             });
 
             if (response.ok) {
                 const data = await response.json();
-                setProfileImage(`http://localhost:3000${data.avatarUrl}`);
+                setProfileImage(data.avatarUrl);
                 setIsCropping(false);
                 alert("Foto actualizada correctamente");
             }
