@@ -76,6 +76,32 @@ const Register = () => {
         }
     }, [webcamRef]);
 
+    // Capture back photo and immediately scan for barcode
+    const captureBack = async () => {
+        const imageSrc = webcamRef.current?.getScreenshot();
+        if (imageSrc) {
+            setCapturedImage(imageSrc);
+
+            // Stop live scanner
+            if (stopScanRef.current) {
+                stopScanRef.current();
+            }
+
+            // Immediately scan the captured image
+            setIsScanning(true);
+            setScanStatus('Analizando código...');
+
+            const found = await scanBarcodeFromImage(imageSrc);
+            setIsScanning(false);
+
+            if (found) {
+                console.log("✅ Barcode data extracted from captured image");
+            } else {
+                console.log("⚠️ No barcode found, user can enter manually");
+            }
+        }
+    };
+
     // Confirm front photo and go to back
     const confirmFront = () => {
         setImages(prev => ({ ...prev, front: capturedImage }));
@@ -83,13 +109,65 @@ const Register = () => {
         setStep(2);
     };
 
-    // Start barcode scanning for back of document
+    // Scan barcode from an image (more reliable than stream)
+    const scanBarcodeFromImage = async (imageSrc) => {
+        console.log("🔍 Scanning barcode from captured image...");
+        setScanStatus('Analizando código...');
+
+        try {
+            // Create an image element
+            const img = new Image();
+            img.src = imageSrc;
+            await new Promise((resolve, reject) => {
+                img.onload = resolve;
+                img.onerror = reject;
+            });
+
+            // Try native BarcodeDetector first
+            if ("BarcodeDetector" in window) {
+                console.log("📱 Using native BarcodeDetector");
+                const formats = ["qr_code", "pdf417", "aztec", "data_matrix"];
+                const detector = new window.BarcodeDetector({ formats });
+                const bitmap = await createImageBitmap(img);
+                const codes = await detector.detect(bitmap);
+
+                if (codes?.length) {
+                    const best = codes.find(c =>
+                        c.format?.toLowerCase() === 'pdf417' ||
+                        c.format?.toLowerCase() === 'qr_code'
+                    ) || codes[0];
+
+                    console.log("✅ Code detected:", best.format);
+                    handleBarcodeDetected(best.rawValue, best.format);
+                    return true;
+                }
+            }
+
+            // Fallback to ZXing from image
+            console.log("📷 Using ZXing fallback");
+            const reader = new BrowserMultiFormatReader();
+
+            // Decode from image URL
+            const result = await reader.decodeFromImageUrl(imageSrc);
+            if (result) {
+                console.log("✅ ZXing detected code");
+                handleBarcodeDetected(result.getText(), result.getBarcodeFormat?.()?.toString() || 'unknown');
+                return true;
+            }
+        } catch (error) {
+            console.warn("❌ Barcode scan failed:", error.message);
+        }
+
+        return false;
+    };
+
+    // Start continuous scanning (background while showing camera)
     const startBarcodeScanning = async () => {
         setIsScanning(true);
         setScanStatus('Buscando código...');
 
         try {
-            // Try native BarcodeDetector first (Chrome/Edge)
+            // Only use native BarcodeDetector for continuous scanning
             if ("BarcodeDetector" in window) {
                 const formats = ["qr_code", "pdf417", "aztec", "data_matrix"];
                 const detector = new window.BarcodeDetector({ formats });
@@ -101,8 +179,7 @@ const Register = () => {
                     if (stopped || !webcamRef.current) return;
                     frameCount++;
 
-                    // Process every 5 frames
-                    if (frameCount % 5 !== 0) {
+                    if (frameCount % 10 !== 0) {
                         requestAnimationFrame(tick);
                         return;
                     }
@@ -114,7 +191,6 @@ const Register = () => {
                             const codes = await detector.detect(bitmap);
 
                             if (codes?.length) {
-                                // Found a code!
                                 const best = codes.find(c =>
                                     c.format?.toLowerCase() === 'pdf417' ||
                                     c.format?.toLowerCase() === 'qr_code'
@@ -127,7 +203,7 @@ const Register = () => {
                             }
                         }
                     } catch (e) {
-                        console.warn("Scan error:", e);
+                        // Silently continue
                     }
 
                     requestAnimationFrame(tick);
@@ -135,26 +211,14 @@ const Register = () => {
 
                 requestAnimationFrame(tick);
                 stopScanRef.current = () => { stopped = true; };
-
             } else {
-                // Fallback to ZXing
-                const reader = new BrowserMultiFormatReader();
-                const controls = await reader.decodeFromVideoDevice(
-                    undefined,
-                    webcamRef.current.video,
-                    (result, err) => {
-                        if (result) {
-                            setScanStatus('¡Código detectado!');
-                            handleBarcodeDetected(result.getText(), result.getBarcodeFormat?.()?.toString() || 'unknown');
-                            controls.stop();
-                        }
-                    }
-                );
-                stopScanRef.current = () => controls.stop();
+                // No native support - will scan on capture
+                console.log("📷 BarcodeDetector not available, will scan on capture");
+                setScanStatus('Captura para escanear');
             }
         } catch (error) {
             console.error("Scanner init error:", error);
-            setScanStatus('Error al iniciar escáner');
+            setScanStatus('Captura para escanear');
         }
     };
 
@@ -181,8 +245,8 @@ const Register = () => {
         }
     };
 
-    // Confirm back photo (with or without scan)
-    const confirmBack = () => {
+    // Confirm back photo - capture and scan for barcode
+    const confirmBack = async () => {
         const imageSrc = webcamRef.current?.getScreenshot() || capturedImage;
         setImages(prev => ({ ...prev, back: imageSrc }));
         setCapturedImage(null);
@@ -190,6 +254,21 @@ const Register = () => {
         // Stop scanner if running
         if (stopScanRef.current) {
             stopScanRef.current();
+        }
+
+        // If we haven't already scanned data, try to scan from the captured image
+        if (!scannedData && imageSrc) {
+            setScanStatus('Analizando imagen...');
+            setIsScanning(true);
+
+            const found = await scanBarcodeFromImage(imageSrc);
+            setIsScanning(false);
+
+            if (found) {
+                console.log("✅ Data extracted from back image");
+            } else {
+                console.log("⚠️ No barcode found in back image");
+            }
         }
 
         setStep(3); // Go to selfie
@@ -544,61 +623,81 @@ const Register = () => {
                         <div className="text-center mb-4">
                             <h3 className="text-2xl font-black mb-1 bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent flex items-center justify-center gap-2">
                                 <Scan className="w-6 h-6 text-blue-500" />
-                                Reverso + Escaneo
+                                Documento - Reverso
                             </h3>
                             <p className="text-sm text-gray-500 dark:text-gray-400">
-                                Apunta al código PDF417 (el grande del reverso)
+                                Captura el reverso con el código de barras visible
                             </p>
                         </div>
 
-                        <div className="relative w-full aspect-[3/2] bg-slate-900 rounded-3xl overflow-hidden shadow-2xl border-4 border-slate-700 mb-4">
-                            <Webcam
-                                audio={false}
-                                ref={webcamRef}
-                                screenshotFormat="image/jpeg"
-                                screenshotQuality={0.95}
-                                videoConstraints={videoConstraints}
-                                className="w-full h-full object-cover"
-                                onLoadedData={() => {
-                                    if (!isScanning && !scannedData) {
-                                        startBarcodeScanning();
-                                    }
-                                }}
-                            />
-
-                            {/* Scanning overlay */}
-                            {isScanning && (
-                                <div className="absolute inset-0 pointer-events-none">
-                                    <div className="absolute inset-0 flex items-center justify-center">
-                                        <div className="w-64 h-40 border-2 border-blue-500 rounded-xl animate-pulse" />
+                        <div className="relative w-full aspect-[3/2] bg-slate-900 rounded-3xl overflow-hidden shadow-2xl border-4 border-slate-700 mb-6">
+                            {!capturedImage ? (
+                                <>
+                                    <Webcam
+                                        audio={false}
+                                        ref={webcamRef}
+                                        screenshotFormat="image/jpeg"
+                                        screenshotQuality={0.95}
+                                        videoConstraints={videoConstraints}
+                                        className="w-full h-full object-cover"
+                                        onLoadedData={() => {
+                                            if (!isScanning && !scannedData) {
+                                                startBarcodeScanning();
+                                            }
+                                        }}
+                                    />
+                                    <button
+                                        onClick={() => setUseRearCamera(!useRearCamera)}
+                                        className="absolute top-4 right-4 z-10 w-10 h-10 bg-black/50 backdrop-blur-sm rounded-full flex items-center justify-center text-white"
+                                    >
+                                        <RefreshCw className="w-5 h-5" />
+                                    </button>
+                                    {/* Barcode guide */}
+                                    <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                                        <div className="w-64 h-32 border-2 border-blue-400 border-dashed rounded-xl flex items-center justify-center">
+                                            <span className="text-blue-400 text-xs bg-black/50 px-2 py-1 rounded">Código aquí</span>
+                                        </div>
                                     </div>
-                                    <div className="absolute inset-0 flex items-center justify-center">
-                                        <div className="w-64 h-1 bg-gradient-to-r from-transparent via-blue-500 to-transparent animate-bounce" />
-                                    </div>
-                                    <div className="absolute bottom-4 left-0 right-0 text-center">
-                                        <span className="bg-black/70 text-white px-4 py-2 rounded-full text-sm flex items-center justify-center gap-2 mx-auto w-max">
-                                            <Loader2 className="w-4 h-4 animate-spin" />
-                                            {scanStatus}
-                                        </span>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Success overlay */}
-                            {scannedData && (
-                                <div className="absolute inset-0 bg-green-500/20 backdrop-blur-sm flex items-center justify-center">
-                                    <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-2xl text-center">
-                                        <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto mb-2" />
-                                        <p className="font-bold text-green-600 dark:text-green-400">¡Código detectado!</p>
-                                        <p className="text-xs text-gray-500 mt-1">
-                                            {documentType === 'license' ? '📋 Licencia' : '🪪 INE'}
-                                        </p>
-                                    </div>
-                                </div>
+                                    {/* Scanning indicator */}
+                                    {isScanning && (
+                                        <div className="absolute bottom-4 left-0 right-0 text-center">
+                                            <span className="bg-blue-500/80 text-white px-4 py-2 rounded-full text-xs flex items-center justify-center gap-2 mx-auto w-max">
+                                                <Loader2 className="w-3 h-3 animate-spin" />
+                                                {scanStatus}
+                                            </span>
+                                        </div>
+                                    )}
+                                </>
+                            ) : (
+                                <>
+                                    <img src={capturedImage} alt="back captured" className="w-full h-full object-cover" />
+                                    {/* Scanning status on captured image */}
+                                    {isScanning && (
+                                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                                            <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-2xl text-center">
+                                                <Loader2 className="w-10 h-10 text-blue-500 animate-spin mx-auto mb-3" />
+                                                <p className="font-bold text-gray-800 dark:text-white">Analizando código...</p>
+                                                <p className="text-xs text-gray-500 mt-1">Buscando datos en la imagen</p>
+                                            </div>
+                                        </div>
+                                    )}
+                                    {/* Success overlay */}
+                                    {scannedData && (
+                                        <div className="absolute inset-0 bg-green-500/20 backdrop-blur-sm flex items-center justify-center">
+                                            <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-2xl text-center">
+                                                <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto mb-2" />
+                                                <p className="font-bold text-green-600 dark:text-green-400">¡Datos extraídos!</p>
+                                                {scannedData.curp && (
+                                                    <p className="text-xs text-gray-500 mt-1 font-mono">{scannedData.curp}</p>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
                             )}
                         </div>
 
-                        {/* Scan status / Data preview */}
+                        {/* Data preview if scanned */}
                         {scannedData && (
                             <div className="w-full bg-green-50 dark:bg-green-950/30 rounded-xl p-4 mb-4 border border-green-200 dark:border-green-800">
                                 <h4 className="font-bold text-green-700 dark:text-green-400 mb-2 flex items-center gap-2">
@@ -609,35 +708,46 @@ const Register = () => {
                                     {scannedData.fullName && (
                                         <div className="col-span-2">
                                             <span className="text-gray-500 text-xs">Nombre:</span>
-                                            <p className="font-medium">{scannedData.fullName}</p>
+                                            <p className="font-medium dark:text-white">{scannedData.fullName}</p>
                                         </div>
                                     )}
                                     {scannedData.curp && (
                                         <div className="col-span-2">
                                             <span className="text-gray-500 text-xs">CURP:</span>
-                                            <p className="font-mono font-medium">{scannedData.curp}</p>
+                                            <p className="font-mono font-medium dark:text-white">{scannedData.curp}</p>
                                         </div>
                                     )}
                                 </div>
                             </div>
                         )}
 
-                        <div className="flex gap-4 w-full">
-                            {!scannedData && (
-                                <button
-                                    onClick={skipScanning}
-                                    className="flex-1 py-3 bg-gray-200 dark:bg-slate-700 text-gray-700 dark:text-gray-300 rounded-xl font-semibold"
-                                >
-                                    Continuar sin escaneo
+                        {/* Capture/Confirm buttons */}
+                        <div className="flex space-x-6">
+                            {!capturedImage ? (
+                                <button onClick={captureBack} className="flex flex-col items-center gap-2">
+                                    <div className="w-18 h-18 sm:w-20 sm:h-20 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full text-white shadow-lg flex items-center justify-center hover:scale-110 active:scale-95 transition-all">
+                                        <Camera size={38} />
+                                    </div>
+                                    <span className="text-xs font-bold text-gray-500 tracking-wider">CAPTURAR</span>
                                 </button>
+                            ) : (
+                                <>
+                                    <button onClick={() => { setCapturedImage(null); setScannedData(null); }} className="flex flex-col items-center gap-2">
+                                        <div className="w-16 h-16 bg-white dark:bg-slate-800 border-2 border-gray-200 dark:border-slate-700 rounded-full text-gray-500 flex items-center justify-center hover:scale-110 active:scale-95 transition-all">
+                                            <RefreshCw size={24} />
+                                        </div>
+                                        <span className="text-xs font-bold text-gray-400 tracking-wider">REPETIR</span>
+                                    </button>
+                                    <button onClick={confirmBack} disabled={isScanning} className="flex flex-col items-center gap-2">
+                                        <div className={`w-20 h-20 rounded-full text-white shadow-lg flex items-center justify-center hover:scale-110 active:scale-95 transition-all ${isScanning ? 'bg-gray-400' : 'bg-gradient-to-br from-green-500 to-teal-500'}`}>
+                                            {isScanning ? <Loader2 size={32} className="animate-spin" /> : <Check size={42} />}
+                                        </div>
+                                        <span className="text-xs font-bold text-green-500 tracking-wider">
+                                            {isScanning ? 'ANALIZANDO' : 'CONFIRMAR'}
+                                        </span>
+                                    </button>
+                                </>
                             )}
-                            <button
-                                onClick={confirmBack}
-                                className={`flex-1 py-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-xl font-semibold flex items-center justify-center gap-2 ${!scannedData ? '' : 'w-full'}`}
-                            >
-                                <Check className="w-5 h-5" />
-                                {scannedData ? 'Continuar' : 'Capturar y continuar'}
-                            </button>
                         </div>
                     </div>
                 )}
