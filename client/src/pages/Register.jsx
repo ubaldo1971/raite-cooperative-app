@@ -1,383 +1,351 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import CameraCapture from '../components/CameraCapture';
-import { createWorker } from 'tesseract.js';
+import Webcam from 'react-webcam';
+import { BrowserMultiFormatReader } from '@zxing/browser';
+import { parseInePayload, formatForBackend } from '../utils/ineParser';
 import {
     Loader2, ArrowLeft, Shield, CheckCircle2, Camera,
     IdCard, User, Sparkles, ChevronRight, FileCheck,
-    AlertCircle, Fingerprint
+    AlertCircle, Fingerprint, RefreshCw, Scan, Check,
+    Mail, Phone, Lock, CreditCard, UserPlus, Eye, EyeOff
 } from 'lucide-react';
 import raiteLogo from '../assets/raite-logo.png';
 
+/**
+ * Registro Híbrido Mejorado
+ * - Captura fotos de documentos (frente y reverso)
+ * - Escanea códigos PDF417/QR automáticamente del reverso
+ * - Detecta tipo de documento (INE o Licencia)
+ * - Extrae datos del código (más preciso que OCR)
+ */
 const Register = () => {
     const navigate = useNavigate();
-    const [step, setStep] = useState(0); // 0: Intro, 1: Front, 2: Back, 3: Selfie, 4: Processing, 5: Form
+
+    // Steps: 0:intro, 1:front, 2:back+scan, 3:selfie, 4:processing, 5:form, 6:contact, 7:password, 8:bank, 9:emergency, 10:pending
+    const [step, setStep] = useState(0);
     const [images, setImages] = useState({ front: null, back: null, selfie: null });
-    const [ocrData, setOcrData] = useState({});
+    const [scannedData, setScannedData] = useState(null);
+    const [documentType, setDocumentType] = useState(null); // 'ine' or 'license'
+    const [contactData, setContactData] = useState({ email: '', phone: '' });
+    const [passwordData, setPasswordData] = useState({ password: '', confirmPassword: '', showPassword: false });
+    const [bankData, setBankData] = useState({ clabe: '', bankName: '' });
+    const [emergencyContact, setEmergencyContact] = useState({ name: '', phone: '', relation: '' });
     const [processing, setProcessing] = useState(false);
     const [isLoaded, setIsLoaded] = useState(false);
     const [acceptedTerms, setAcceptedTerms] = useState(false);
-    const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+    const [errors, setErrors] = useState({});
+
+    // Camera refs
+    const webcamRef = useRef(null);
+    const [capturedImage, setCapturedImage] = useState(null);
+    const [isScanning, setIsScanning] = useState(false);
+    const [scanStatus, setScanStatus] = useState('');
+    const [useRearCamera, setUseRearCamera] = useState(true);
+    const scannerRef = useRef(null);
+    const stopScanRef = useRef(null);
 
     useEffect(() => {
         setIsLoaded(true);
+        return () => {
+            // Cleanup scanner on unmount
+            if (stopScanRef.current) {
+                stopScanRef.current();
+            }
+        };
     }, []);
 
-    const handleCapture = (type) => async (imageSrc) => {
-        setImages(prev => ({ ...prev, [type]: imageSrc }));
-
-        if (type === 'selfie') {
-            setStep(4);
-            processImages({ ...images, selfie: imageSrc });
-        } else {
-            setStep(prev => prev + 1);
-        }
+    // Video constraints
+    const videoConstraints = {
+        width: { min: 1280, ideal: 1920, max: 4096 },
+        height: { min: 720, ideal: 1080, max: 2160 },
+        aspectRatio: { ideal: 16 / 9 },
+        facingMode: useRearCamera ? { ideal: "environment" } : { ideal: "user" }
     };
 
-    const processImages = async (finalImages) => {
-        setProcessing(true);
-        console.log("🔍 Iniciando procesamiento OCR...");
+    // Validations
+    const validateEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    const validatePhone = (phone) => /^[0-9]{10}$/.test(phone.replace(/[\s\-\(\)]/g, ''));
+    const validateCLABE = (clabe) => /^\d{18}$/.test(clabe.replace(/\s/g, ''));
+    const validatePassword = (pass) => pass.length >= 8 && /[A-Z]/.test(pass) && /[a-z]/.test(pass) && /\d/.test(pass);
+
+    // Capture photo
+    const capture = useCallback(() => {
+        const imageSrc = webcamRef.current?.getScreenshot();
+        if (imageSrc) {
+            setCapturedImage(imageSrc);
+        }
+    }, [webcamRef]);
+
+    // Confirm front photo and go to back
+    const confirmFront = () => {
+        setImages(prev => ({ ...prev, front: capturedImage }));
+        setCapturedImage(null);
+        setStep(2);
+    };
+
+    // Start barcode scanning for back of document
+    const startBarcodeScanning = async () => {
+        setIsScanning(true);
+        setScanStatus('Buscando código...');
 
         try {
-            // Preprocess images for better OCR
-            const preprocessImage = async (imageBase64) => {
-                return new Promise((resolve) => {
-                    const img = new Image();
-                    img.onload = () => {
-                        const canvas = document.createElement('canvas');
-                        const ctx = canvas.getContext('2d');
-                        canvas.width = img.width;
-                        canvas.height = img.height;
+            // Try native BarcodeDetector first (Chrome/Edge)
+            if ("BarcodeDetector" in window) {
+                const formats = ["qr_code", "pdf417", "aztec", "data_matrix"];
+                const detector = new window.BarcodeDetector({ formats });
 
-                        // Draw original image
-                        ctx.drawImage(img, 0, 0);
+                let stopped = false;
+                let frameCount = 0;
 
-                        // Get image data
-                        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                        const data = imageData.data;
+                const tick = async () => {
+                    if (stopped || !webcamRef.current) return;
+                    frameCount++;
 
-                        // Step 1: Convert to grayscale
-                        const grayscale = [];
-                        for (let i = 0; i < data.length; i += 4) {
-                            const avg = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
-                            grayscale.push(avg);
-                        }
+                    // Process every 5 frames
+                    if (frameCount % 5 !== 0) {
+                        requestAnimationFrame(tick);
+                        return;
+                    }
 
-                        // Step 2: Calculate Otsu threshold for binarization
-                        const histogram = new Array(256).fill(0);
-                        grayscale.forEach(val => histogram[val]++);
+                    try {
+                        const video = webcamRef.current.video;
+                        if (video && video.readyState === 4) {
+                            const bitmap = await createImageBitmap(video);
+                            const codes = await detector.detect(bitmap);
 
-                        const total = grayscale.length;
-                        let sum = 0;
-                        for (let i = 0; i < 256; i++) sum += i * histogram[i];
+                            if (codes?.length) {
+                                // Found a code!
+                                const best = codes.find(c =>
+                                    c.format?.toLowerCase() === 'pdf417' ||
+                                    c.format?.toLowerCase() === 'qr_code'
+                                ) || codes[0];
 
-                        let sumB = 0, wB = 0, wF = 0, maxVar = 0, threshold = 128;
-                        for (let i = 0; i < 256; i++) {
-                            wB += histogram[i];
-                            if (wB === 0) continue;
-                            wF = total - wB;
-                            if (wF === 0) break;
-                            sumB += i * histogram[i];
-                            const mB = sumB / wB;
-                            const mF = (sum - sumB) / wF;
-                            const variance = wB * wF * (mB - mF) * (mB - mF);
-                            if (variance > maxVar) {
-                                maxVar = variance;
-                                threshold = i;
+                                setScanStatus('¡Código detectado!');
+                                handleBarcodeDetected(best.rawValue, best.format);
+                                stopped = true;
+                                return;
                             }
                         }
-
-                        // Step 3: Apply binarization (black/white)
-                        let j = 0;
-                        for (let i = 0; i < data.length; i += 4) {
-                            const newValue = grayscale[j++] > threshold ? 255 : 0;
-                            data[i] = newValue;     // R
-                            data[i + 1] = newValue; // G
-                            data[i + 2] = newValue; // B
-                        }
-
-                        ctx.putImageData(imageData, 0, 0);
-                        resolve(canvas.toDataURL('image/png')); // PNG for sharper text
-                    };
-                    img.src = imageBase64;
-                });
-            };
-
-            console.log("⚙️ Preprocesando imágenes (binarización Otsu)...");
-            const processedFront = await preprocessImage(finalImages.front);
-            const processedBack = await preprocessImage(finalImages.back);
-            console.log("✅ Imágenes preprocesadas");
-
-            // Initialize Tesseract worker with Spanish and optimized settings
-            console.log("🔧 Inicializando Tesseract con configuración optimizada...");
-            const worker = await createWorker('spa');
-
-            // Set parameters for better ID card recognition
-            await worker.setParameters({
-                tessedit_pageseg_mode: '6', // Assume uniform block of text
-                tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZÁÉÍÓÚÑ0123456789/-. ',
-                preserve_interword_spaces: '1'
-            });
-            console.log("✅ Worker Tesseract configurado");
-
-            // Process FRONT of INE
-            console.log("📄 Procesando INE Frente...");
-            const frontResult = await worker.recognize(processedFront);
-            const frontText = frontResult.data.text;
-            console.log("📝 Texto OCR (Frente):");
-            console.log("=".repeat(50));
-            console.log(frontText);
-            console.log("=".repeat(50));
-
-            // Process BACK of INE for CURP and address
-            console.log("📄 Procesando INE Reverso...");
-            const backResult = await worker.recognize(processedBack);
-            const backText = backResult.data.text;
-            console.log("📝 Texto OCR (Reverso):");
-            console.log("=".repeat(50));
-            console.log(backText);
-            console.log("=".repeat(50));
-
-            // Combined text for better extraction
-            const allText = frontText + "\n" + backText;
-            console.log("📋 Texto combinado:", allText);
-
-            // Extract data using multiple patterns for Mexican INE
-            const extracted = extractINEData(frontText, backText);
-            console.log("✅ Datos extraídos:", extracted);
-
-            setOcrData(extracted);
-            await worker.terminate();
-            console.log("🔒 Worker terminado");
-
-        } catch (err) {
-            console.error("❌ OCR Error:", err);
-            // Provide helpful fallback with instructions
-            setOcrData({
-                fullName: "",
-                curp: "",
-                address: "",
-                ocrFailed: true,
-                errorMessage: err.message
-            });
-        } finally {
-            setProcessing(false);
-            setStep(5);
-        }
-    };
-
-    // Helper function to extract INE data with multiple regex patterns
-    const extractINEData = (frontText, backText) => {
-        const allText = (frontText + "\n" + backText).toUpperCase();
-
-        // Words to EXCLUDE from name extraction (INE header/logo text)
-        const excludeWords = [
-            'INSTITUTO', 'NACIONAL', 'ELECTORAL', 'MEXICO', 'MÉXICO',
-            'CREDENCIAL', 'PARA', 'VOTAR', 'VIGENCIA', 'REGISTRO',
-            'FEDERAL', 'ELECTORES', 'INE', 'NOMBRE', 'DOMICILIO',
-            'CLAVE', 'ELECTOR', 'CURP', 'ESTADO', 'MUNICIPIO', 'SECCION',
-            'LOCALIDAD', 'EMISION', 'VIGENTE', 'PERMANENTE'
-        ];
-
-        // Clean text for name extraction (remove common OCR noise)
-        const cleanText = (text) => {
-            return text
-                .replace(/[^A-ZÁÉÍÓÚÑ\s]/g, ' ')
-                .replace(/\s+/g, ' ')
-                .trim();
-        };
-
-        // ===== NOMBRE EXTRACTION =====
-        let fullName = "";
-
-        // Pattern 1: After "NOMBRE" label
-        const nombreMatch = frontText.match(/NOMBRE\s*[:\s]*\n?([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s]+)/i);
-        if (nombreMatch) {
-            fullName = cleanText(nombreMatch[1]);
-        }
-
-        // Pattern 2: Look for APELLIDO PATERNO / MATERNO / NOMBRE(S) format
-        if (!fullName) {
-            const apellidoP = frontText.match(/PATERNO[:\s]*\n?([A-ZÁÉÍÓÚÑ]+)/i)?.[1];
-            const apellidoM = frontText.match(/MATERNO[:\s]*\n?([A-ZÁÉÍÓÚÑ]+)/i)?.[1];
-            const nombres = frontText.match(/NOMBRE\(?S?\)?[:\s]*\n?([A-ZÁÉÍÓÚÑ\s]+)/i)?.[1];
-            if (apellidoP || nombres) {
-                fullName = [apellidoP, apellidoM, nombres?.trim()].filter(Boolean).join(" ");
-            }
-        }
-
-        // Pattern 3: Lines that look like names (2-4 words, all caps, not excluded words)
-        if (!fullName) {
-            const lines = frontText.split('\n').map(l => cleanText(l)).filter(l => l.length > 5);
-            for (const line of lines) {
-                const words = line.split(' ').filter(w => w.length >= 2);
-                // Check if line has 2-4 words and none are in exclude list
-                if (words.length >= 2 && words.length <= 4) {
-                    const isValidName = words.every(w => !excludeWords.includes(w));
-                    if (isValidName) {
-                        fullName = words.join(' ');
-                        break;
+                    } catch (e) {
+                        console.warn("Scan error:", e);
                     }
-                }
+
+                    requestAnimationFrame(tick);
+                };
+
+                requestAnimationFrame(tick);
+                stopScanRef.current = () => { stopped = true; };
+
+            } else {
+                // Fallback to ZXing
+                const reader = new BrowserMultiFormatReader();
+                const controls = await reader.decodeFromVideoDevice(
+                    undefined,
+                    webcamRef.current.video,
+                    (result, err) => {
+                        if (result) {
+                            setScanStatus('¡Código detectado!');
+                            handleBarcodeDetected(result.getText(), result.getBarcodeFormat?.()?.toString() || 'unknown');
+                            controls.stop();
+                        }
+                    }
+                );
+                stopScanRef.current = () => controls.stop();
             }
+        } catch (error) {
+            console.error("Scanner init error:", error);
+            setScanStatus('Error al iniciar escáner');
         }
-
-        // Filter out any remaining excluded words from name
-        if (fullName) {
-            const nameWords = fullName.split(' ').filter(w => !excludeWords.includes(w) && w.length >= 2);
-            fullName = nameWords.join(' ');
-        }
-
-        // ===== CURP EXTRACTION (18 characters: AAAA######HAAAAA##) =====
-        const curpPattern = /[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d/;
-        let curp = allText.match(curpPattern)?.[0];
-
-        // Alternative CURP patterns
-        if (!curp) {
-            curp = allText.match(/[A-Z]{4}\d{6}[HM][A-Z]{5}\d{2}/)?.[0];
-        }
-        if (!curp) {
-            // Look for CURP label then value
-            curp = allText.match(/CURP[:\s]*([A-Z0-9]{18})/)?.[1];
-        }
-
-        // ===== ADDRESS EXTRACTION =====
-        let address = "";
-        // Pattern 1: After DOMICILIO label
-        const domMatch = backText.match(/DOMICILIO[:\s]*\n?(.+?)(?:\n|CLAVE|SECCI|$)/is);
-        if (domMatch) {
-            address = domMatch[1].replace(/\n/g, ' ').trim();
-        }
-        // Pattern 2: Look for street patterns
-        if (!address) {
-            const streetMatch = backText.match(/((?:C[\.:\s]|AV[\.:\s]|CALLE|BLVD)[^\n]+)/i);
-            address = streetMatch?.[1]?.trim() || "";
-        }
-
-        // ===== CLAVE DE ELECTOR (18 alphanumeric) =====
-        let claveElector = allText.match(/CLAVE[:\s]*(?:DE[:\s]*)?ELECTOR[:\s]*([A-Z0-9]{18})/i)?.[1];
-        if (!claveElector) {
-            // Look for 18-char alphanumeric that's not CURP
-            const matches = allText.match(/\b[A-Z]{6}[0-9]{8}[A-Z0-9]{4}\b/g);
-            if (matches) {
-                claveElector = matches.find(m => m !== curp) || "";
-            }
-        }
-
-        // ===== FECHA DE NACIMIENTO (DD/MM/YYYY or similar) =====
-        let fechaNac = frontText.match(/(\d{2}[\/\-]\d{2}[\/\-]\d{4})/)?.[1];
-        if (!fechaNac) {
-            // Look after NACIMIENTO label
-            fechaNac = frontText.match(/NACIMIENTO[:\s]*(\d{2}[\/\-]\d{2}[\/\-]\d{4})/i)?.[1];
-        }
-
-        // ===== SECCION (4 digits) =====
-        let seccion = allText.match(/SECCI[OÓ]N[:\s]*(\d{4})/i)?.[1];
-        if (!seccion) {
-            // Sometimes it's just 4 digits near SECCION
-            seccion = allText.match(/SECC[:\s]*(\d{4})/i)?.[1];
-        }
-
-        console.log("🔎 Extracción detallada:", {
-            fullName: fullName || "(no encontrado)",
-            curp: curp || "(no encontrado)",
-            address: address || "(no encontrado)",
-            claveElector: claveElector || "(no encontrado)",
-            fechaNac: fechaNac || "(no encontrado)",
-            seccion: seccion || "(no encontrado)"
-        });
-
-        return {
-            fullName: fullName || "",
-            curp: curp || "",
-            address: address || "",
-            claveElector: claveElector || "",
-            fechaNacimiento: fechaNac || "",
-            seccion: seccion || "",
-            // Indicate if data was actually found
-            dataFound: !!(fullName || curp || address)
-        };
     };
 
+    // Handle barcode detection
+    const handleBarcodeDetected = (rawValue, format) => {
+        console.log("📊 Barcode detected:", format, rawValue.substring(0, 100));
+
+        // Parse the data
+        const parsed = parseInePayload(rawValue, format);
+        const formatted = formatForBackend(parsed);
+
+        console.log("📋 Parsed data:", formatted);
+
+        setScannedData(formatted);
+        setIsScanning(false);
+
+        // Detect document type based on data
+        if (formatted.curp && formatted.claveElector) {
+            setDocumentType('ine');
+        } else if (rawValue.toLowerCase().includes('licencia') || rawValue.includes('LIC')) {
+            setDocumentType('license');
+        } else {
+            setDocumentType('ine'); // Default to INE
+        }
+    };
+
+    // Confirm back photo (with or without scan)
+    const confirmBack = () => {
+        const imageSrc = webcamRef.current?.getScreenshot() || capturedImage;
+        setImages(prev => ({ ...prev, back: imageSrc }));
+        setCapturedImage(null);
+
+        // Stop scanner if running
+        if (stopScanRef.current) {
+            stopScanRef.current();
+        }
+
+        setStep(3); // Go to selfie
+    };
+
+    // Capture and confirm selfie
+    const confirmSelfie = () => {
+        const imageSrc = webcamRef.current?.getScreenshot() || capturedImage;
+        setImages(prev => ({ ...prev, selfie: imageSrc }));
+        setCapturedImage(null);
+        setStep(4); // Processing
+
+        // Short processing state then go to form
+        setTimeout(() => {
+            setStep(5);
+        }, 1500);
+    };
+
+    // Skip scanning and continue
+    const skipScanning = () => {
+        if (stopScanRef.current) {
+            stopScanRef.current();
+        }
+        setIsScanning(false);
+        setScanStatus('');
+        setScannedData(null);
+        setDocumentType('ine'); // Default
+    };
+
+    // Validate contact data
+    const validateContactData = () => {
+        const newErrors = {};
+        if (!contactData.email || !validateEmail(contactData.email)) {
+            newErrors.email = 'Email inválido';
+        }
+        if (!contactData.phone || !validatePhone(contactData.phone)) {
+            newErrors.phone = 'Teléfono debe tener 10 dígitos';
+        }
+        setErrors(newErrors);
+        if (Object.keys(newErrors).length === 0) {
+            setStep(7);
+        }
+    };
+
+    // Validate password
+    const validatePasswordData = () => {
+        const newErrors = {};
+        if (!validatePassword(passwordData.password)) {
+            newErrors.password = 'Contraseña debe tener 8+ caracteres, mayúscula, minúscula y número';
+        }
+        if (passwordData.password !== passwordData.confirmPassword) {
+            newErrors.confirmPassword = 'Las contraseñas no coinciden';
+        }
+        setErrors(newErrors);
+        if (Object.keys(newErrors).length === 0) {
+            setStep(8);
+        }
+    };
+
+    // Validate bank data
+    const validateBankData = () => {
+        const newErrors = {};
+        if (bankData.clabe && !validateCLABE(bankData.clabe)) {
+            newErrors.clabe = 'CLABE debe tener 18 dígitos';
+        }
+        setErrors(newErrors);
+        if (Object.keys(newErrors).length === 0) {
+            setStep(9);
+        }
+    };
+
+    // Submit registration
     const submitRegistration = async () => {
+        setProcessing(true);
+
         try {
+            const endpoint = documentType === 'license'
+                ? '/api/users/register-license'
+                : '/api/users/register-ine';
+
             const payload = {
-                fullName: ocrData.fullName,
-                curp: ocrData.curp,
-                address: ocrData.address,
-                claveElector: ocrData.claveElector,
-                fechaNacimiento: ocrData.fechaNacimiento,
-                seccion: ocrData.seccion,
-                images: {
-                    front: images.front,
-                    back: images.back,
-                    selfie: images.selfie
-                }
+                fullName: scannedData?.fullName || '',
+                curp: scannedData?.curp || '',
+                address: scannedData?.address || '',
+                claveElector: scannedData?.claveElector || '',
+                fechaNacimiento: scannedData?.fechaNacimiento || '',
+                seccion: scannedData?.seccion || '',
+                email: contactData.email,
+                phone: contactData.phone,
+                password: passwordData.password,
+                clabe: bankData.clabe,
+                bankName: bankData.bankName,
+                emergencyContactName: emergencyContact.name,
+                emergencyContactPhone: emergencyContact.phone,
+                emergencyContactRelation: emergencyContact.relation,
+                images,
+                source: scannedData?.source || 'PHOTO_ONLY'
             };
 
-            console.log('📤 Enviando registro:', {
-                fullName: payload.fullName,
-                curp: payload.curp,
-                address: payload.address
-            });
+            console.log('📤 Submitting registration:', payload);
 
-            const response = await fetch('/api/users/register-ine', {
+            const response = await fetch(endpoint, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(payload),
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
             });
 
             const result = await response.json();
 
-            if (response.ok && result.success) {
-                console.log("✅ Registro exitoso:", result.user);
-                // Store user in localStorage for dashboard access
-                localStorage.setItem('raite_user', JSON.stringify(result.user));
-                localStorage.setItem('raite_user_id', result.user.id);
-                navigate('/dashboard');
-            } else {
-                console.error("❌ Error en registro:", result.message);
-                // Still navigate but show error could be added
-                navigate('/dashboard');
+            if (!response.ok) {
+                throw new Error(result.message || 'Error en el registro');
             }
-        } catch (error) {
-            console.error("❌ Network Error:", error);
-            navigate('/dashboard');
+
+            localStorage.setItem('token', result.token);
+            localStorage.setItem('user', JSON.stringify(result.user));
+            localStorage.setItem('userId', result.user.id);
+
+            setProcessing(false);
+            setStep(10);
+
+        } catch (err) {
+            setProcessing(false);
+            alert(err.message || 'Error al registrar. Por favor intenta de nuevo.');
         }
     };
 
-    // Progress steps configuration
+    // Progress steps
     const progressSteps = [
-        { id: 1, label: 'INE Frente', icon: IdCard, completed: step > 1 },
-        { id: 2, label: 'INE Reverso', icon: FileCheck, completed: step > 2 },
-        { id: 3, label: 'Selfie', icon: Camera, completed: step > 3 },
-        { id: 4, label: 'Verificar', icon: CheckCircle2, completed: step > 4 },
+        { id: 1, label: 'Frente', icon: IdCard },
+        { id: 2, label: 'Reverso', icon: Scan },
+        { id: 3, label: 'Selfie', icon: Camera },
+        { id: 4, label: 'Datos', icon: FileCheck },
     ];
 
+    const theme = documentType === 'license'
+        ? { from: 'from-blue-500', to: 'to-cyan-500', text: 'text-blue-500' }
+        : { from: 'from-orange-500', to: 'to-pink-500', text: 'text-orange-500' };
+
     return (
-        <div className="min-h-screen bg-gray-50 dark:bg-slate-950 text-gray-800 dark:text-gray-100 flex flex-col transition-colors duration-500">
-            {/* Animated Header */}
-            <header className={`bg-white dark:bg-slate-900 shadow-sm border-b dark:border-slate-800 transition-all duration-500 ${isLoaded ? 'translate-y-0 opacity-100' : '-translate-y-4 opacity-0'}`}>
+        <div className="min-h-screen bg-gray-50 dark:bg-slate-950 text-gray-800 dark:text-gray-100 flex flex-col">
+            {/* Header */}
+            <header className={`bg-white dark:bg-slate-900 shadow-sm border-b dark:border-slate-800 sticky top-0 z-50 transition-all duration-500 ${isLoaded ? 'translate-y-0 opacity-100' : '-translate-y-4 opacity-0'}`}>
                 <div className="p-4 flex items-center justify-between">
                     <button
-                        onClick={() => step > 0 ? setStep(step - 1) : navigate('/')}
+                        onClick={() => step > 0 ? setStep(Math.max(0, step - 1)) : navigate('/')}
                         className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full transition-colors"
                     >
                         <ArrowLeft className="w-6 h-6 text-gray-600 dark:text-gray-300" />
                     </button>
                     <div className="flex items-center gap-2">
-                        <img
-                            src={raiteLogo}
-                            alt="RAITE"
-                            className="h-8 w-auto object-contain animate-logo-10s rounded-sm"
-                        />
+                        <img src={raiteLogo} alt="RAITE" className="h-8 w-auto object-contain rounded-sm" />
                         <span className="font-bold text-lg bg-gradient-to-r from-orange-500 to-pink-500 bg-clip-text text-transparent border-l border-gray-200 dark:border-slate-700 pl-2">
-                            {step === 5 ? 'Confirmar Datos' : 'Registro de Socio'}
+                            Registro
                         </span>
                     </div>
-                    <div className="w-10" /> {/* Spacer for centering */}
+                    <div className="w-10" />
                 </div>
 
                 {/* Progress Bar */}
@@ -388,22 +356,15 @@ const Register = () => {
                                 <div key={s.id} className="flex items-center flex-1">
                                     <div className={`
                                         w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center transition-all duration-500
-                                        ${step >= s.id ? 'bg-gradient-to-br from-orange-500 to-pink-500 text-white shadow-lg' : 'bg-gray-200 dark:bg-slate-800 text-gray-500 dark:text-gray-500'}
-                                        ${step === s.id ? 'scale-110 animate-pulse-glow' : ''}
+                                        ${step >= s.id ? `bg-gradient-to-br ${theme.from} ${theme.to} text-white shadow-lg` : 'bg-gray-200 dark:bg-slate-800 text-gray-500'}
+                                        ${step === s.id ? 'scale-110 animate-pulse' : ''}
                                     `}>
                                         <s.icon className="w-4 h-4 sm:w-5 sm:h-5" />
                                     </div>
                                     {i < progressSteps.length - 1 && (
-                                        <div className={`flex-1 h-1 mx-1 sm:mx-2 rounded transition-all duration-500 ${step > s.id ? 'bg-gradient-to-r from-orange-500 to-pink-500' : 'bg-gray-200 dark:bg-slate-800'}`} />
+                                        <div className={`flex-1 h-1 mx-1 sm:mx-2 rounded transition-all duration-500 ${step > s.id ? `bg-gradient-to-r ${theme.from} ${theme.to}` : 'bg-gray-200 dark:bg-slate-800'}`} />
                                     )}
                                 </div>
-                            ))}
-                        </div>
-                        <div className="flex justify-between mt-2">
-                            {progressSteps.map(s => (
-                                <span key={s.id} className={`text-[10px] sm:text-xs font-medium ${step >= s.id ? 'text-orange-500' : 'text-gray-400'}`}>
-                                    {s.label}
-                                </span>
                             ))}
                         </div>
                     </div>
@@ -414,32 +375,37 @@ const Register = () => {
                 {/* Step 0: Intro */}
                 {step === 0 && (
                     <div className={`transition-all duration-500 ${isLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-                        {/* Compact Hero */}
-                        <div className="bg-hero-gradient rounded-2xl p-4 mb-4 text-center">
+                        <div className="bg-gradient-to-br from-orange-500 to-pink-500 rounded-2xl p-4 mb-4 text-center text-white">
                             <div className="flex items-center justify-center gap-3">
                                 <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center">
                                     <Fingerprint className="w-6 h-6 text-white" />
                                 </div>
                                 <div className="text-left">
-                                    <h2 className="text-xl font-black text-white">Validemos tu Identidad</h2>
-                                    <p className="text-white/80 text-xs">Proceso seguro y encriptado ✨</p>
+                                    <h2 className="text-xl font-black">Validemos tu Identidad</h2>
+                                    <p className="text-white/80 text-xs">Escaneo automático de código ✨</p>
                                 </div>
                             </div>
                         </div>
 
-                        {/* Compact 3 Steps - Horizontal */}
-                        <div className={`bg-white dark:bg-slate-900 rounded-xl p-4 mb-4 border dark:border-slate-800 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}>
+                        {/* Steps explanation */}
+                        <div className="bg-white dark:bg-slate-900 rounded-xl p-4 mb-4 border dark:border-slate-800">
                             <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-3 flex items-center gap-1">
                                 <Sparkles className="w-3 h-3 text-yellow-500" />
-                                Solo 3 pasos rápidos:
+                                Solo 4 pasos rápidos:
                             </p>
                             <div className="flex justify-between items-center gap-2">
                                 <div className="flex-1 text-center">
                                     <div className="w-10 h-10 mx-auto mb-1 bg-gradient-to-br from-orange-100 to-yellow-100 dark:from-orange-950/30 dark:to-yellow-950/30 rounded-lg flex items-center justify-center">
                                         <span className="text-lg">🪪</span>
                                     </div>
-                                    <p className="text-xs font-semibold text-gray-800 dark:text-white">INE</p>
-                                    <p className="text-[10px] text-gray-400">Frente y reverso</p>
+                                    <p className="text-xs font-semibold text-gray-800 dark:text-white">Frente</p>
+                                </div>
+                                <ChevronRight className="w-4 h-4 text-gray-300" />
+                                <div className="flex-1 text-center">
+                                    <div className="w-10 h-10 mx-auto mb-1 bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-950/30 dark:to-purple-950/30 rounded-lg flex items-center justify-center">
+                                        <span className="text-lg">📊</span>
+                                    </div>
+                                    <p className="text-xs font-semibold text-gray-800 dark:text-white">Reverso + Código</p>
                                 </div>
                                 <ChevronRight className="w-4 h-4 text-gray-300" />
                                 <div className="flex-1 text-center">
@@ -447,7 +413,6 @@ const Register = () => {
                                         <span className="text-lg">📸</span>
                                     </div>
                                     <p className="text-xs font-semibold text-gray-800 dark:text-white">Selfie</p>
-                                    <p className="text-[10px] text-gray-400">Verificación</p>
                                 </div>
                                 <ChevronRight className="w-4 h-4 text-gray-300" />
                                 <div className="flex-1 text-center">
@@ -455,27 +420,19 @@ const Register = () => {
                                         <span className="text-lg">✅</span>
                                     </div>
                                     <p className="text-xs font-semibold text-gray-800 dark:text-white">¡Listo!</p>
-                                    <p className="text-[10px] text-gray-400">Confirmar datos</p>
                                 </div>
                             </div>
                         </div>
 
-                        {/* Compact Privacy Section */}
-                        <div className={`bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-900/10 dark:to-purple-900/10 rounded-xl p-3 mb-4 border border-blue-100 dark:border-blue-900/30`}>
+                        {/* Privacy Consent */}
+                        <div className="bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-900/10 dark:to-purple-900/10 rounded-xl p-3 mb-4 border border-blue-100 dark:border-blue-900/30">
                             <div className="flex items-center gap-2 mb-2">
                                 <Shield className="w-4 h-4 text-blue-500" />
                                 <h4 className="font-semibold text-gray-800 dark:text-white text-xs">Aviso de Privacidad</h4>
                             </div>
                             <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-3 leading-relaxed">
-                                RAITE Cooperativa tratará tus datos (INE, selfie) para verificar tu identidad y registrarte como socio.
-                                <button
-                                    type="button"
-                                    onClick={() => setShowPrivacyModal(true)}
-                                    className="text-blue-500 font-semibold ml-1"
-                                >Ver más</button>
+                                RAITE Cooperativa tratará tus datos (INE/Licencia, selfie) para verificar tu identidad y registrarte como socio.
                             </p>
-
-                            {/* Consent Checkbox */}
                             <label className="flex items-center gap-2 cursor-pointer">
                                 <div className="relative">
                                     <input
@@ -486,7 +443,7 @@ const Register = () => {
                                     />
                                     <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${acceptedTerms
                                         ? 'bg-gradient-to-br from-green-500 to-teal-500 border-green-500'
-                                        : 'border-orange-400 bg-white dark:bg-slate-800 animate-pulse-orange'
+                                        : 'border-orange-400 bg-white dark:bg-slate-800 animate-pulse'
                                         }`}>
                                         {acceptedTerms && <CheckCircle2 className="w-3 h-3 text-white" />}
                                     </div>
@@ -497,7 +454,6 @@ const Register = () => {
                             </label>
                         </div>
 
-                        {/* CTA Button */}
                         <button
                             onClick={() => setStep(1)}
                             disabled={!acceptedTerms}
@@ -507,255 +463,582 @@ const Register = () => {
                                 }`}
                         >
                             <Camera className="w-5 h-5" />
-                            {acceptedTerms ? 'Comenzar Verificación' : 'Acepta para continuar'}
+                            {acceptedTerms ? 'Comenzar Registro' : 'Acepta para continuar'}
                             {acceptedTerms && <ChevronRight className="w-5 h-5" />}
                         </button>
-
-                        {/* Compact Trust badges */}
-                        <div className="flex justify-center gap-3 mt-4 text-[10px] text-gray-400">
-                            <span className="flex items-center gap-1"><Shield className="w-3 h-3 text-green-500" />Encriptado</span>
-                            <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-blue-500" />Seguro</span>
-                        </div>
                     </div>
                 )}
 
-                {/* Privacy Modal */}
-                {showPrivacyModal && (
-                    <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4 transition-all">
-                        <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-lg w-full max-h-[80vh] overflow-hidden shadow-2xl animate-scale-in border dark:border-slate-800">
-                            <div className="bg-gradient-to-r from-blue-500 to-indigo-500 p-4">
-                                <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                                    <Shield className="w-6 h-6" />
-                                    Aviso de Privacidad Integral
-                                </h3>
-                            </div>
-                            <div className="p-6 overflow-y-auto max-h-[50vh] text-sm text-gray-600 dark:text-gray-300 space-y-4">
-                                <p>
-                                    <strong>RAITE Cooperativa de Transportistas S.C. de R.L.</strong>, con domicilio en [Dirección], es responsable del tratamiento de los datos personales que nos proporcione.
-                                </p>
-
-                                <h4 className="font-bold text-gray-800 dark:text-white">¿Para qué usamos sus datos?</h4>
-                                <ul className="list-disc list-inside space-y-1">
-                                    <li>Verificación de identidad mediante INE y reconocimiento facial</li>
-                                    <li>Registro y administración como socio cooperativista</li>
-                                    <li>Distribución de beneficios y utilidades</li>
-                                    <li>Comunicaciones sobre asambleas y votaciones</li>
-                                    <li>Cumplimiento de obligaciones fiscales y laborales</li>
-                                </ul>
-
-                                <h4 className="font-bold text-gray-800 dark:text-white">Datos que recabamos</h4>
-                                <ul className="list-disc list-inside space-y-1">
-                                    <li>Nombre completo, CURP, dirección</li>
-                                    <li>Fotografía de INE (frente y reverso)</li>
-                                    <li>Fotografía facial (selfie)</li>
-                                    <li>Datos de contacto</li>
-                                </ul>
-
-                                <h4 className="font-bold text-gray-800 dark:text-white">Derechos ARCO</h4>
-                                <p>
-                                    Usted tiene derecho a Acceder, Rectificar, Cancelar u Oponerse al tratamiento de sus datos personales. Para ejercer estos derechos, envíe su solicitud a: <span className="text-blue-500">privacidad@raite.coop</span>
-                                </p>
-
-                                <h4 className="font-bold text-gray-800 dark:text-white">Transferencia de datos</h4>
-                                <p>
-                                    Sus datos no serán transferidos a terceros sin su consentimiento, excepto en los casos previstos por la Ley.
-                                </p>
-
-                                <p className="text-xs text-gray-400">
-                                    Última actualización: Diciembre 2024
-                                </p>
-                            </div>
-                            <div className="p-4 bg-gray-50 dark:bg-slate-800/50 border-t dark:border-slate-800 flex gap-3">
-                                <button
-                                    onClick={() => setShowPrivacyModal(false)}
-                                    className="flex-1 py-3 bg-gray-200 dark:bg-slate-700 text-gray-700 dark:text-gray-200 font-semibold rounded-xl hover:bg-gray-300 dark:hover:bg-slate-600 transition-colors"
-                                >
-                                    Cerrar
-                                </button>
-                                <button
-                                    onClick={() => { setAcceptedTerms(true); setShowPrivacyModal(false); }}
-                                    className="flex-1 py-3 bg-gradient-to-r from-green-500 to-teal-500 text-white font-semibold rounded-xl hover:shadow-lg transition-all"
-                                >
-                                    Aceptar Términos
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
+                {/* Step 1: Front Photo */}
                 {step === 1 && (
-                    <CameraCapture
-                        label="INE Frente"
-                        instruction="Alinea el frente de tu INE en el recuadro"
-                        onCapture={handleCapture('front')}
-                        isDocument={true}
-                    />
+                    <div className="flex flex-col items-center animate-fade-in">
+                        <div className="text-center mb-4">
+                            <h3 className="text-2xl font-black mb-1 bg-gradient-to-r from-orange-500 to-pink-500 bg-clip-text text-transparent">
+                                Documento - Frente
+                            </h3>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">Captura el frente de tu INE o Licencia</p>
+                        </div>
+
+                        <div className="relative w-full aspect-[3/2] bg-slate-100 dark:bg-slate-800 rounded-3xl overflow-hidden shadow-2xl border-4 border-white dark:border-slate-800 mb-6">
+                            {!capturedImage ? (
+                                <>
+                                    <Webcam
+                                        audio={false}
+                                        ref={webcamRef}
+                                        screenshotFormat="image/jpeg"
+                                        screenshotQuality={0.95}
+                                        videoConstraints={videoConstraints}
+                                        className="w-full h-full object-cover"
+                                        key={useRearCamera ? 'rear' : 'front'}
+                                    />
+                                    <button
+                                        onClick={() => setUseRearCamera(!useRearCamera)}
+                                        className="absolute top-4 right-4 z-10 w-10 h-10 bg-black/50 backdrop-blur-sm rounded-full flex items-center justify-center text-white"
+                                    >
+                                        <RefreshCw className="w-5 h-5" />
+                                    </button>
+                                    {/* Corner guides */}
+                                    <div className="absolute inset-0 pointer-events-none">
+                                        <div className="absolute top-4 left-4 w-12 h-12 border-l-4 border-t-4 border-orange-500 rounded-tl-lg" />
+                                        <div className="absolute top-4 right-4 w-12 h-12 border-r-4 border-t-4 border-orange-500 rounded-tr-lg" />
+                                        <div className="absolute bottom-4 left-4 w-12 h-12 border-l-4 border-b-4 border-orange-500 rounded-bl-lg" />
+                                        <div className="absolute bottom-4 right-4 w-12 h-12 border-r-4 border-b-4 border-orange-500 rounded-br-lg" />
+                                    </div>
+                                </>
+                            ) : (
+                                <img src={capturedImage} alt="captured" className="w-full h-full object-cover" />
+                            )}
+                        </div>
+
+                        <div className="flex space-x-6">
+                            {!capturedImage ? (
+                                <button onClick={capture} className="flex flex-col items-center gap-2">
+                                    <div className="w-18 h-18 sm:w-20 sm:h-20 bg-gradient-to-br from-orange-500 to-pink-500 rounded-full text-white shadow-lg flex items-center justify-center hover:scale-110 active:scale-95 transition-all">
+                                        <Camera size={38} />
+                                    </div>
+                                    <span className="text-xs font-bold text-gray-500 tracking-wider">CAPTURAR</span>
+                                </button>
+                            ) : (
+                                <>
+                                    <button onClick={() => setCapturedImage(null)} className="flex flex-col items-center gap-2">
+                                        <div className="w-16 h-16 bg-white dark:bg-slate-800 border-2 border-gray-200 dark:border-slate-700 rounded-full text-gray-500 flex items-center justify-center hover:scale-110 active:scale-95 transition-all">
+                                            <RefreshCw size={24} />
+                                        </div>
+                                        <span className="text-xs font-bold text-gray-400 tracking-wider">REPETIR</span>
+                                    </button>
+                                    <button onClick={confirmFront} className="flex flex-col items-center gap-2">
+                                        <div className="w-20 h-20 bg-gradient-to-br from-green-500 to-teal-500 rounded-full text-white shadow-lg flex items-center justify-center hover:scale-110 active:scale-95 transition-all">
+                                            <Check size={42} />
+                                        </div>
+                                        <span className="text-xs font-bold text-green-500 tracking-wider">CONFIRMAR</span>
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    </div>
                 )}
 
+                {/* Step 2: Back Photo + Barcode Scan */}
                 {step === 2 && (
-                    <CameraCapture
-                        label="INE Reverso"
-                        instruction="Alinea el reverso de tu INE"
-                        onCapture={handleCapture('back')}
-                        isDocument={true}
-                    />
+                    <div className="flex flex-col items-center animate-fade-in">
+                        <div className="text-center mb-4">
+                            <h3 className="text-2xl font-black mb-1 bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent flex items-center justify-center gap-2">
+                                <Scan className="w-6 h-6 text-blue-500" />
+                                Reverso + Escaneo
+                            </h3>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">
+                                Apunta al código PDF417 (el grande del reverso)
+                            </p>
+                        </div>
+
+                        <div className="relative w-full aspect-[3/2] bg-slate-900 rounded-3xl overflow-hidden shadow-2xl border-4 border-slate-700 mb-4">
+                            <Webcam
+                                audio={false}
+                                ref={webcamRef}
+                                screenshotFormat="image/jpeg"
+                                screenshotQuality={0.95}
+                                videoConstraints={videoConstraints}
+                                className="w-full h-full object-cover"
+                                onLoadedData={() => {
+                                    if (!isScanning && !scannedData) {
+                                        startBarcodeScanning();
+                                    }
+                                }}
+                            />
+
+                            {/* Scanning overlay */}
+                            {isScanning && (
+                                <div className="absolute inset-0 pointer-events-none">
+                                    <div className="absolute inset-0 flex items-center justify-center">
+                                        <div className="w-64 h-40 border-2 border-blue-500 rounded-xl animate-pulse" />
+                                    </div>
+                                    <div className="absolute inset-0 flex items-center justify-center">
+                                        <div className="w-64 h-1 bg-gradient-to-r from-transparent via-blue-500 to-transparent animate-bounce" />
+                                    </div>
+                                    <div className="absolute bottom-4 left-0 right-0 text-center">
+                                        <span className="bg-black/70 text-white px-4 py-2 rounded-full text-sm flex items-center justify-center gap-2 mx-auto w-max">
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                            {scanStatus}
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Success overlay */}
+                            {scannedData && (
+                                <div className="absolute inset-0 bg-green-500/20 backdrop-blur-sm flex items-center justify-center">
+                                    <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-2xl text-center">
+                                        <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto mb-2" />
+                                        <p className="font-bold text-green-600 dark:text-green-400">¡Código detectado!</p>
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            {documentType === 'license' ? '📋 Licencia' : '🪪 INE'}
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Scan status / Data preview */}
+                        {scannedData && (
+                            <div className="w-full bg-green-50 dark:bg-green-950/30 rounded-xl p-4 mb-4 border border-green-200 dark:border-green-800">
+                                <h4 className="font-bold text-green-700 dark:text-green-400 mb-2 flex items-center gap-2">
+                                    <CheckCircle2 className="w-4 h-4" />
+                                    Datos detectados
+                                </h4>
+                                <div className="grid grid-cols-2 gap-2 text-sm">
+                                    {scannedData.fullName && (
+                                        <div className="col-span-2">
+                                            <span className="text-gray-500 text-xs">Nombre:</span>
+                                            <p className="font-medium">{scannedData.fullName}</p>
+                                        </div>
+                                    )}
+                                    {scannedData.curp && (
+                                        <div className="col-span-2">
+                                            <span className="text-gray-500 text-xs">CURP:</span>
+                                            <p className="font-mono font-medium">{scannedData.curp}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="flex gap-4 w-full">
+                            {!scannedData && (
+                                <button
+                                    onClick={skipScanning}
+                                    className="flex-1 py-3 bg-gray-200 dark:bg-slate-700 text-gray-700 dark:text-gray-300 rounded-xl font-semibold"
+                                >
+                                    Continuar sin escaneo
+                                </button>
+                            )}
+                            <button
+                                onClick={confirmBack}
+                                className={`flex-1 py-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-xl font-semibold flex items-center justify-center gap-2 ${!scannedData ? '' : 'w-full'}`}
+                            >
+                                <Check className="w-5 h-5" />
+                                {scannedData ? 'Continuar' : 'Capturar y continuar'}
+                            </button>
+                        </div>
+                    </div>
                 )}
 
+                {/* Step 3: Selfie */}
                 {step === 3 && (
-                    <CameraCapture
-                        label="Selfie"
-                        instruction="Mira a la cámara y sonríe"
-                        onCapture={handleCapture('selfie')}
-                        isDocument={false}
-                    />
+                    <div className="flex flex-col items-center animate-fade-in">
+                        <div className="text-center mb-4">
+                            <h3 className="text-2xl font-black mb-1 bg-gradient-to-r from-pink-500 to-purple-500 bg-clip-text text-transparent">
+                                Selfie de Verificación
+                            </h3>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">Centra tu rostro en el círculo</p>
+                        </div>
+
+                        <div className="relative w-full aspect-[4/3] bg-slate-100 dark:bg-slate-800 rounded-3xl overflow-hidden shadow-2xl border-4 border-white dark:border-slate-800 mb-6">
+                            {!capturedImage ? (
+                                <>
+                                    <Webcam
+                                        audio={false}
+                                        ref={webcamRef}
+                                        screenshotFormat="image/jpeg"
+                                        screenshotQuality={0.95}
+                                        videoConstraints={{ ...videoConstraints, facingMode: { ideal: "user" } }}
+                                        className="w-full h-full object-cover"
+                                    />
+                                    {/* Face guide */}
+                                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-40 border-4 border-white/50 rounded-full pointer-events-none" />
+                                </>
+                            ) : (
+                                <img src={capturedImage} alt="selfie" className="w-full h-full object-cover" />
+                            )}
+                        </div>
+
+                        <div className="flex space-x-6">
+                            {!capturedImage ? (
+                                <button onClick={capture} className="flex flex-col items-center gap-2">
+                                    <div className="w-18 h-18 sm:w-20 sm:h-20 bg-gradient-to-br from-pink-500 to-purple-500 rounded-full text-white shadow-lg flex items-center justify-center hover:scale-110 active:scale-95 transition-all">
+                                        <Camera size={38} />
+                                    </div>
+                                    <span className="text-xs font-bold text-gray-500 tracking-wider">CAPTURAR</span>
+                                </button>
+                            ) : (
+                                <>
+                                    <button onClick={() => setCapturedImage(null)} className="flex flex-col items-center gap-2">
+                                        <div className="w-16 h-16 bg-white dark:bg-slate-800 border-2 border-gray-200 dark:border-slate-700 rounded-full text-gray-500 flex items-center justify-center hover:scale-110 active:scale-95 transition-all">
+                                            <RefreshCw size={24} />
+                                        </div>
+                                        <span className="text-xs font-bold text-gray-400 tracking-wider">REPETIR</span>
+                                    </button>
+                                    <button onClick={confirmSelfie} className="flex flex-col items-center gap-2">
+                                        <div className="w-20 h-20 bg-gradient-to-br from-green-500 to-teal-500 rounded-full text-white shadow-lg flex items-center justify-center hover:scale-110 active:scale-95 transition-all">
+                                            <Check size={42} />
+                                        </div>
+                                        <span className="text-xs font-bold text-green-500 tracking-wider">CONFIRMAR</span>
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    </div>
                 )}
 
                 {/* Step 4: Processing */}
                 {step === 4 && (
-                    <div className="flex flex-col items-center justify-center h-full mt-20">
-                        <div className="relative">
-                            <div className="w-24 h-24 bg-gradient-to-br from-orange-500 to-pink-500 rounded-full flex items-center justify-center animate-pulse-glow">
-                                <Loader2 className="animate-spin text-white" size={48} />
-                            </div>
-                            <div className="absolute -top-2 -right-2 w-8 h-8 bg-yellow-400 rounded-full flex items-center justify-center animate-icon-bounce">
-                                <Sparkles className="w-4 h-4 text-white" />
-                            </div>
+                    <div className="flex flex-col items-center justify-center min-h-[60vh]">
+                        <div className={`w-24 h-24 bg-gradient-to-br ${theme.from} ${theme.to} rounded-full flex items-center justify-center mb-6 animate-pulse`}>
+                            <Loader2 className="w-12 h-12 text-white animate-spin" />
                         </div>
-                        <p className="text-xl font-bold text-gray-800 dark:text-white mt-6">Validando información...</p>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">Nuestra IA está leyendo tu documento</p>
-
-                        <div className="flex gap-1 mt-6">
-                            <div className="w-2 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '0s' }} />
-                            <div className="w-2 h-2 bg-pink-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
-                            <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }} />
-                        </div>
+                        <h2 className="text-xl font-bold mb-2 text-center dark:text-white">Procesando...</h2>
+                        <p className="text-gray-500 dark:text-gray-400 text-center">
+                            {scannedData ? 'Datos del código listos' : 'Preparando formulario'}
+                        </p>
                     </div>
                 )}
 
-                {/* Step 5: Form */}
+                {/* Step 5: Form - Verify Data */}
                 {step === 5 && (
-                    <div className={`transition-all duration-700 ${isLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
-                        {/* Header - changes based on OCR success */}
-                        {ocrData.dataFound ? (
-                            <div className="bg-gradient-to-r from-green-500 to-teal-500 rounded-2xl p-4 mb-6 flex items-center gap-4">
-                                <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
-                                    <CheckCircle2 className="w-6 h-6 text-white" />
-                                </div>
+                    <div className="space-y-4 animate-fade-in">
+                        {/* Status banner */}
+                        {scannedData?.curp ? (
+                            <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-xl p-4 flex items-start gap-3">
+                                <CheckCircle2 className="w-5 h-5 text-green-500 mt-0.5" />
                                 <div>
-                                    <p className="text-white font-bold">¡Verificación Exitosa!</p>
-                                    <p className="text-white/80 text-sm">Revisa y confirma tus datos</p>
+                                    <p className="font-semibold text-green-700 dark:text-green-400">Datos extraídos del código</p>
+                                    <p className="text-sm text-green-600 dark:text-green-500">Verifica que sean correctos</p>
                                 </div>
                             </div>
                         ) : (
-                            <div className="bg-gradient-to-r from-orange-500 to-yellow-500 rounded-2xl p-4 mb-6">
-                                <div className="flex items-center gap-4 mb-2">
-                                    <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
-                                        <AlertCircle className="w-6 h-6 text-white" />
-                                    </div>
-                                    <div>
-                                        <p className="text-white font-bold">Ingresa tus datos manualmente</p>
-                                        <p className="text-white/80 text-sm">No pudimos leer tu INE automáticamente</p>
-                                    </div>
+                            <div className="bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-xl p-4 flex items-start gap-3">
+                                <AlertCircle className="w-5 h-5 text-orange-500 mt-0.5" />
+                                <div>
+                                    <p className="font-semibold text-orange-700 dark:text-orange-400">Ingresa tus datos manualmente</p>
+                                    <p className="text-sm text-orange-600 dark:text-orange-500">No se detectó código en el documento</p>
                                 </div>
-                                <p className="text-white/90 text-xs mt-2 bg-white/10 rounded-lg p-2">
-                                    💡 <strong>Tip:</strong> Para mejores resultados, asegúrate de que la INE esté bien iluminada, enfocada y sin reflejos.
-                                </p>
                             </div>
                         )}
 
-                        <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-lg border dark:border-slate-800">
-                            <h3 className="font-bold text-xl mb-6 flex items-center gap-2">
-                                <User className="w-5 h-5 text-orange-500" />
-                                <span className="bg-gradient-to-r from-orange-500 to-pink-500 bg-clip-text text-transparent">
-                                    {ocrData.dataFound ? 'Verifica tu información' : 'Completa tu información'}
-                                </span>
+                        {/* Form fields */}
+                        <div className="bg-white dark:bg-slate-900 rounded-xl p-5 border dark:border-slate-800 space-y-4">
+                            <h3 className="font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                                <User className="w-4 h-4 text-orange-500" />
+                                {scannedData?.curp ? 'Verifica tu información' : 'Completa tu información'}
                             </h3>
 
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                                        Nombre Completo
-                                        {ocrData.fullName ? (
-                                            <span className="text-xs bg-green-100 dark:bg-green-950/30 text-green-600 dark:text-green-400 px-2 py-0.5 rounded-full border dark:border-green-800/20">✓ Detectado</span>
-                                        ) : (
-                                            <span className="text-xs bg-orange-100 dark:bg-orange-950/30 text-orange-600 dark:text-orange-400 px-2 py-0.5 rounded-full border dark:border-orange-800/20">Ingresa manualmente</span>
-                                        )}
-                                    </label>
-                                    <input
-                                        type="text"
-                                        defaultValue={ocrData.fullName}
-                                        placeholder="Ej: JUAN PÉREZ GARCÍA"
-                                        className={`w-full border-2 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 transition-all dark:text-white ${ocrData.fullName ? 'border-green-200 dark:border-green-900/30 bg-green-50/30 dark:bg-green-900/10' : 'border-orange-200 dark:border-orange-900/30 bg-orange-50/30 dark:bg-orange-900/10'
-                                            }`}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                                        CURP
-                                        {ocrData.curp ? (
-                                            <span className="text-xs bg-green-100 dark:bg-green-950/30 text-green-600 dark:text-green-400 px-2 py-0.5 rounded-full border dark:border-green-800/20">✓ Detectado</span>
-                                        ) : (
-                                            <span className="text-xs bg-orange-100 dark:bg-orange-950/30 text-orange-600 dark:text-orange-400 px-2 py-0.5 rounded-full border dark:border-orange-800/20">Ingresa manualmente</span>
-                                        )}
-                                    </label>
-                                    <input
-                                        type="text"
-                                        defaultValue={ocrData.curp}
-                                        placeholder="Ej: PEGJ850101HDFRRA09"
-                                        maxLength={18}
-                                        className={`w-full border-2 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 transition-all dark:text-white font-mono uppercase ${ocrData.curp ? 'border-green-200 dark:border-green-900/30 bg-green-50/30 dark:bg-green-900/10' : 'border-orange-200 dark:border-orange-900/30 bg-orange-50/30 dark:bg-orange-900/10'
-                                            }`}
-                                    />
-                                    <p className="text-xs text-gray-400 mt-1">18 caracteres alfanuméricos</p>
-                                </div>
-                                <div>
-                                    <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                                        Domicilio
-                                        {ocrData.address ? (
-                                            <span className="text-xs bg-green-100 dark:bg-green-950/30 text-green-600 dark:text-green-400 px-2 py-0.5 rounded-full border dark:border-green-800/20">✓ Detectado</span>
-                                        ) : (
-                                            <span className="text-xs bg-orange-100 dark:bg-orange-950/30 text-orange-600 dark:text-orange-400 px-2 py-0.5 rounded-full border dark:border-orange-800/20">Ingresa manualmente</span>
-                                        )}
-                                    </label>
-                                    <textarea
-                                        defaultValue={ocrData.address}
-                                        placeholder="Ej: Calle Reforma #123, Col. Centro, CDMX, CP 06000"
-                                        className={`w-full border-2 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 transition-all dark:text-white resize-none ${ocrData.address ? 'border-green-200 dark:border-green-900/30 bg-green-50/30 dark:bg-green-900/10' : 'border-orange-200 dark:border-orange-900/30 bg-orange-50/30 dark:bg-orange-900/10'
-                                            }`}
-                                        rows={2}
-                                    />
-                                </div>
+                            <div>
+                                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">Nombre Completo</label>
+                                <input
+                                    type="text"
+                                    value={scannedData?.fullName || ''}
+                                    onChange={(e) => setScannedData(prev => ({ ...prev, fullName: e.target.value.toUpperCase() }))}
+                                    className="w-full mt-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 dark:text-white"
+                                    placeholder="Ej: JUAN PÉREZ GARCÍA"
+                                />
                             </div>
 
-                            <div className="mt-6">
-                                <h4 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                                    <IdCard className="w-4 h-4 text-blue-500" />
-                                    Documentos capturados
-                                </h4>
-                                <div className="flex gap-3">
-                                    <div className="relative group">
-                                        <img src={images.front} className="w-20 h-14 object-cover rounded-lg bg-gray-200 border-2 border-gray-200 group-hover:border-orange-500 transition-colors" alt="INE Frente" />
-                                        <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[10px] bg-orange-500 text-white px-2 rounded-full">Frente</span>
-                                    </div>
-                                    <div className="relative group">
-                                        <img src={images.back} className="w-20 h-14 object-cover rounded-lg bg-gray-200 border-2 border-gray-200 group-hover:border-pink-500 transition-colors" alt="INE Reverso" />
-                                        <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[10px] bg-pink-500 text-white px-2 rounded-full">Reverso</span>
-                                    </div>
-                                    <div className="relative group">
-                                        <img src={images.selfie} className="w-14 h-14 object-cover rounded-full bg-gray-200 border-2 border-gray-200 group-hover:border-purple-500 transition-colors" alt="Selfie" />
-                                        <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[10px] bg-purple-500 text-white px-2 rounded-full">Selfie</span>
-                                    </div>
-                                </div>
+                            <div>
+                                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">CURP</label>
+                                <input
+                                    type="text"
+                                    value={scannedData?.curp || ''}
+                                    onChange={(e) => setScannedData(prev => ({ ...prev, curp: e.target.value.toUpperCase() }))}
+                                    className="w-full mt-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 font-mono dark:text-white"
+                                    maxLength={18}
+                                    placeholder="Ej: PEGJ850101HDFRRA09"
+                                />
                             </div>
 
-                            <button
-                                onClick={submitRegistration}
-                                className="mt-8 w-full bg-gradient-to-r from-green-500 to-teal-500 text-white py-4 rounded-2xl font-bold text-lg shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-                            >
-                                <CheckCircle2 className="w-5 h-5" />
-                                Confirmar y Registrar
-                            </button>
+                            {/* Document photos preview */}
+                            <div className="flex gap-2 mt-4">
+                                {images.front && (
+                                    <div className="flex-1 relative">
+                                        <img src={images.front} alt="Frente" className="w-full h-16 object-cover rounded-lg" />
+                                        <span className="absolute bottom-1 left-1 text-xs bg-black/50 text-white px-1.5 py-0.5 rounded">Frente</span>
+                                    </div>
+                                )}
+                                {images.back && (
+                                    <div className="flex-1 relative">
+                                        <img src={images.back} alt="Reverso" className="w-full h-16 object-cover rounded-lg" />
+                                        <span className="absolute bottom-1 left-1 text-xs bg-black/50 text-white px-1.5 py-0.5 rounded">Reverso</span>
+                                    </div>
+                                )}
+                                {images.selfie && (
+                                    <div className="flex-1 relative">
+                                        <img src={images.selfie} alt="Selfie" className="w-full h-16 object-cover rounded-lg" />
+                                        <span className="absolute bottom-1 left-1 text-xs bg-black/50 text-white px-1.5 py-0.5 rounded">Selfie</span>
+                                    </div>
+                                )}
+                            </div>
                         </div>
+
+                        <button
+                            onClick={() => setStep(6)}
+                            className={`w-full py-4 bg-gradient-to-r ${theme.from} ${theme.to} text-white rounded-xl font-bold hover:opacity-90`}
+                        >
+                            Continuar
+                        </button>
+                    </div>
+                )}
+
+                {/* Step 6: Contact Information */}
+                {step === 6 && (
+                    <div className="space-y-4 animate-fade-in">
+                        <div className="bg-gradient-to-br from-green-500 to-emerald-500 rounded-2xl p-4 mb-4 text-center text-white">
+                            <Mail className="w-12 h-12 mx-auto mb-2" />
+                            <h2 className="text-xl font-black">Datos de Contacto</h2>
+                            <p className="text-white/80 text-xs">Necesarios para tu cuenta</p>
+                        </div>
+
+                        <div className="bg-white dark:bg-slate-900 rounded-xl p-5 border dark:border-slate-800 space-y-4">
+                            <div>
+                                <label className="text-sm font-medium text-gray-600 dark:text-gray-400 flex items-center gap-2">
+                                    <Mail className="w-4 h-4" /> Email
+                                </label>
+                                <input
+                                    type="email"
+                                    value={contactData.email}
+                                    onChange={(e) => setContactData({ ...contactData, email: e.target.value })}
+                                    className={`w-full mt-1 px-4 py-3 rounded-xl border ${errors.email ? 'border-red-500' : 'border-gray-200 dark:border-slate-700'} bg-gray-50 dark:bg-slate-800 dark:text-white`}
+                                    placeholder="tucorreo@ejemplo.com"
+                                />
+                                {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
+                            </div>
+
+                            <div>
+                                <label className="text-sm font-medium text-gray-600 dark:text-gray-400 flex items-center gap-2">
+                                    <Phone className="w-4 h-4" /> Teléfono (10 dígitos)
+                                </label>
+                                <input
+                                    type="tel"
+                                    value={contactData.phone}
+                                    onChange={(e) => setContactData({ ...contactData, phone: e.target.value.replace(/\D/g, '') })}
+                                    maxLength={10}
+                                    className={`w-full mt-1 px-4 py-3 rounded-xl border ${errors.phone ? 'border-red-500' : 'border-gray-200 dark:border-slate-700'} bg-gray-50 dark:bg-slate-800 font-mono dark:text-white`}
+                                    placeholder="5512345678"
+                                />
+                                {errors.phone && <p className="text-red-500 text-xs mt-1">{errors.phone}</p>}
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={validateContactData}
+                            className="w-full py-4 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-xl font-bold"
+                        >
+                            Continuar
+                        </button>
+                    </div>
+                )}
+
+                {/* Step 7: Password */}
+                {step === 7 && (
+                    <div className="space-y-4 animate-fade-in">
+                        <div className="bg-gradient-to-br from-purple-500 to-indigo-500 rounded-2xl p-4 mb-4 text-center text-white">
+                            <Lock className="w-12 h-12 mx-auto mb-2" />
+                            <h2 className="text-xl font-black">Crea tu Contraseña</h2>
+                            <p className="text-white/80 text-xs">Mínimo 8 caracteres, mayúscula, minúscula y número</p>
+                        </div>
+
+                        <div className="bg-white dark:bg-slate-900 rounded-xl p-5 border dark:border-slate-800 space-y-4">
+                            <div>
+                                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">Contraseña</label>
+                                <div className="relative">
+                                    <input
+                                        type={passwordData.showPassword ? 'text' : 'password'}
+                                        value={passwordData.password}
+                                        onChange={(e) => setPasswordData({ ...passwordData, password: e.target.value })}
+                                        className={`w-full mt-1 px-4 py-3 pr-12 rounded-xl border ${errors.password ? 'border-red-500' : 'border-gray-200 dark:border-slate-700'} bg-gray-50 dark:bg-slate-800 dark:text-white`}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setPasswordData({ ...passwordData, showPassword: !passwordData.showPassword })}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 mt-0.5"
+                                    >
+                                        {passwordData.showPassword ? <EyeOff className="w-5 h-5 text-gray-400" /> : <Eye className="w-5 h-5 text-gray-400" />}
+                                    </button>
+                                </div>
+                                {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
+                            </div>
+
+                            <div>
+                                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">Confirmar Contraseña</label>
+                                <input
+                                    type="password"
+                                    value={passwordData.confirmPassword}
+                                    onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+                                    className={`w-full mt-1 px-4 py-3 rounded-xl border ${errors.confirmPassword ? 'border-red-500' : 'border-gray-200 dark:border-slate-700'} bg-gray-50 dark:bg-slate-800 dark:text-white`}
+                                />
+                                {errors.confirmPassword && <p className="text-red-500 text-xs mt-1">{errors.confirmPassword}</p>}
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={validatePasswordData}
+                            className="w-full py-4 bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-xl font-bold"
+                        >
+                            Continuar
+                        </button>
+                    </div>
+                )}
+
+                {/* Step 8: Bank Data (Optional) */}
+                {step === 8 && (
+                    <div className="space-y-4 animate-fade-in">
+                        <div className="bg-gradient-to-br from-cyan-500 to-blue-500 rounded-2xl p-4 mb-4 text-center text-white">
+                            <CreditCard className="w-12 h-12 mx-auto mb-2" />
+                            <h2 className="text-xl font-black">Datos Bancarios</h2>
+                            <p className="text-white/80 text-xs">Opcional - Para depósitos y pagos</p>
+                        </div>
+
+                        <div className="bg-white dark:bg-slate-900 rounded-xl p-5 border dark:border-slate-800 space-y-4">
+                            <div>
+                                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">CLABE (18 dígitos)</label>
+                                <input
+                                    type="text"
+                                    value={bankData.clabe}
+                                    onChange={(e) => setBankData({ ...bankData, clabe: e.target.value.replace(/\D/g, '') })}
+                                    maxLength={18}
+                                    className={`w-full mt-1 px-4 py-3 rounded-xl border ${errors.clabe ? 'border-red-500' : 'border-gray-200 dark:border-slate-700'} bg-gray-50 dark:bg-slate-800 font-mono dark:text-white`}
+                                    placeholder="012345678901234567"
+                                />
+                                {errors.clabe && <p className="text-red-500 text-xs mt-1">{errors.clabe}</p>}
+                            </div>
+
+                            <div>
+                                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">Nombre del Banco</label>
+                                <input
+                                    type="text"
+                                    value={bankData.bankName}
+                                    onChange={(e) => setBankData({ ...bankData, bankName: e.target.value })}
+                                    className="w-full mt-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 dark:text-white"
+                                    placeholder="Ej: BBVA, Santander"
+                                />
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={validateBankData}
+                            className="w-full py-4 bg-gradient-to-r from-cyan-500 to-blue-500 text-white rounded-xl font-bold"
+                        >
+                            Continuar
+                        </button>
+                        <button
+                            onClick={() => setStep(9)}
+                            className="w-full py-3 text-gray-600 dark:text-gray-400 text-sm"
+                        >
+                            Omitir por ahora
+                        </button>
+                    </div>
+                )}
+
+                {/* Step 9: Emergency Contact */}
+                {step === 9 && (
+                    <div className="space-y-4 animate-fade-in">
+                        <div className="bg-gradient-to-br from-red-500 to-rose-500 rounded-2xl p-4 mb-4 text-center text-white">
+                            <UserPlus className="w-12 h-12 mx-auto mb-2" />
+                            <h2 className="text-xl font-black">Contacto de Emergencia</h2>
+                            <p className="text-white/80 text-xs">En caso de ser necesario</p>
+                        </div>
+
+                        <div className="bg-white dark:bg-slate-900 rounded-xl p-5 border dark:border-slate-800 space-y-4">
+                            <div>
+                                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">Nombre Completo</label>
+                                <input
+                                    type="text"
+                                    value={emergencyContact.name}
+                                    onChange={(e) => setEmergencyContact({ ...emergencyContact, name: e.target.value })}
+                                    className="w-full mt-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 dark:text-white"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">Teléfono</label>
+                                <input
+                                    type="tel"
+                                    value={emergencyContact.phone}
+                                    onChange={(e) => setEmergencyContact({ ...emergencyContact, phone: e.target.value.replace(/\D/g, '') })}
+                                    maxLength={10}
+                                    className="w-full mt-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 font-mono dark:text-white"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">Relación</label>
+                                <select
+                                    value={emergencyContact.relation}
+                                    onChange={(e) => setEmergencyContact({ ...emergencyContact, relation: e.target.value })}
+                                    className="w-full mt-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 dark:text-white"
+                                >
+                                    <option value="">Seleccionar</option>
+                                    <option value="Padre/Madre">Padre/Madre</option>
+                                    <option value="Esposo/a">Esposo/a</option>
+                                    <option value="Hermano/a">Hermano/a</option>
+                                    <option value="Hijo/a">Hijo/a</option>
+                                    <option value="Amigo/a">Amigo/a</option>
+                                    <option value="Otro">Otro</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={submitRegistration}
+                            disabled={processing}
+                            className="w-full py-4 bg-gradient-to-r from-orange-500 to-pink-500 text-white rounded-xl font-bold flex items-center justify-center gap-2"
+                        >
+                            {processing ? (
+                                <>
+                                    <Loader2 className="w-5 h-5 animate-spin" />
+                                    Registrando...
+                                </>
+                            ) : (
+                                <>
+                                    <CheckCircle2 className="w-5 h-5" />
+                                    Completar Registro
+                                </>
+                            )}
+                        </button>
+                    </div>
+                )}
+
+                {/* Step 10: Pending Approval */}
+                {step === 10 && (
+                    <div className="flex flex-col items-center justify-center min-h-[60vh] text-center py-8 animate-fade-in">
+                        <div className="w-24 h-24 bg-yellow-100 dark:bg-yellow-950/30 rounded-full flex items-center justify-center mb-6">
+                            <Shield className="w-12 h-12 text-yellow-600 dark:text-yellow-400" />
+                        </div>
+                        <h2 className="text-2xl font-bold mb-2 dark:text-white">¡Registro Completado!</h2>
+                        <p className="text-gray-600 dark:text-gray-400 mb-6 max-w-md">
+                            Tu solicitud está siendo revisada. Te notificaremos cuando sea aprobada.
+                        </p>
+                        <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-xl p-4 mb-6 max-w-md">
+                            <p className="text-sm text-blue-700 dark:text-blue-400">
+                                <strong>Estado:</strong> Pendiente de Aprobación
+                            </p>
+                            <p className="text-xs text-blue-600 dark:text-blue-500 mt-2">
+                                Tiempo estimado: 24-48 horas
+                            </p>
+                        </div>
+                        <button
+                            onClick={() => navigate('/')}
+                            className="px-8 py-3 bg-gradient-to-r from-orange-500 to-pink-500 text-white rounded-xl font-bold"
+                        >
+                            Ir a Inicio
+                        </button>
                     </div>
                 )}
             </div>
