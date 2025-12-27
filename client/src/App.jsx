@@ -25,7 +25,7 @@ function App() {
           <div className="flex-1">
             <Routes>
               <Route path="/" element={<Welcome />} />
-              <Route path="/register" element={<RegisterUnified />} />
+              <Route path="/register" element={<Register />} />
               <Route path="/register-ine" element={<RegisterCloud />} />
               <Route path="/register-license" element={<RegisterLicense />} />
               <Route path="/register-manual" element={<RegisterManual />} />
