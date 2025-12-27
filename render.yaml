@@ -1,0 +1,15 @@
+# Render.com Configuration
+# This file tells Render how to build and deploy the app
+
+services:
+  - type: web
+    name: raite-cooperative-app
+    runtime: node
+    region: oregon
+    plan: free
+    rootDir: server
+    buildCommand: npm install && cd ../client && npm install && npm run build && cd ../admin && npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
