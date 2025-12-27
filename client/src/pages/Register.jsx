@@ -94,12 +94,21 @@ const Register = () => {
 
             const found = await scanBarcodeFromImage(imageSrc);
 
-            if (found) {
-                console.log("✅ Barcode data extracted from captured image");
+            // Check if we found meaningful data (CURP/Name), or just verification URL
+            const hasFullData = scannedData?.curp || scannedData?.fullName;
+            const isVerificationOnly = found && !hasFullData && scannedData?.hasQrVerification;
+
+            if (found && hasFullData) {
+                console.log("✅ Barcode data extracted locally (PDF417)");
                 setIsScanning(false);
             } else {
-                console.log("⚠️ No local barcode found, trying backend...");
-                setScanStatus('Procesando en servidor...');
+                if (isVerificationOnly) {
+                    console.log("⚠️ Local scan found verification QR but no personal data. Trying backend for OCR...");
+                    setScanStatus('Cargando datos del servidor...');
+                } else {
+                    console.log("⚠️ No local barcode found, trying backend...");
+                    setScanStatus('Procesando en servidor...');
+                }
 
                 // Call backend for OCR/barcode processing
                 try {
@@ -123,16 +132,26 @@ const Register = () => {
                             seccion: result.data.seccion || '',
                             sexo: result.data.sexo || '',
                             address: result.data.address || '',
-                            source: 'BACKEND_OCR'
+                            source: 'BACKEND_OCR',
+                            // Preserve verification data if we had it
+                            hasQrVerification: scannedData?.hasQrVerification || false,
+                            verificationUrl: scannedData?.verificationUrl || ''
                         });
                         setScanStatus('¡Datos extraídos!');
+                    } else if (isVerificationOnly) {
+                        console.log("⚠️ Backend found no extra data. Keeping verification info.");
+                        setScanStatus('Verificada (Datos manuales)');
                     } else {
                         console.log("⚠️ Backend found no data");
                         setScanStatus('No se detectó código');
                     }
                 } catch (err) {
                     console.error("❌ Backend error:", err);
-                    setScanStatus('Error de conexión');
+                    if (isVerificationOnly) {
+                        setScanStatus('Verificada (Datos manuales)');
+                    } else {
+                        setScanStatus('Error de conexión');
+                    }
                 }
 
                 setIsScanning(false);
@@ -631,7 +650,7 @@ const Register = () => {
                         <span className="font-bold text-lg bg-gradient-to-r from-orange-500 to-pink-500 bg-clip-text text-transparent border-l border-gray-200 dark:border-slate-700 pl-2">
                             Registro
                         </span>
-                        <span className="text-[8px] text-gray-400 ml-1">v2.2</span>
+                        <span className="text-[8px] text-gray-400 ml-1">v2.3</span>
                     </div>
                     <div className="w-10" />
                 </div>
