@@ -93,14 +93,49 @@ const Register = () => {
             setScanStatus('Analizando código...');
 
             const found = await scanBarcodeFromImage(imageSrc);
-            setIsScanning(false);
 
             if (found) {
                 console.log("✅ Barcode data extracted from captured image");
+                setIsScanning(false);
             } else {
-                console.log("⚠️ No barcode found, user can enter manually");
-                // DEBUG: Show alert on mobile for testing
-                setScanStatus('No se detectó código');
+                console.log("⚠️ No local barcode found, trying backend...");
+                setScanStatus('Procesando en servidor...');
+
+                // Call backend for OCR/barcode processing
+                try {
+                    const response = await fetch('/api/decode-barcode', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ image: imageSrc })
+                    });
+
+                    const result = await response.json();
+                    console.log("📡 Backend response:", result);
+
+                    if (result.success && result.data?.dataFound) {
+                        console.log("✅ Backend extracted data:", result.data);
+                        // Map backend response to our format
+                        setScannedData({
+                            fullName: result.data.fullName || '',
+                            curp: result.data.curp || '',
+                            claveElector: result.data.claveElector || '',
+                            fechaNacimiento: result.data.fechaNacimiento || '',
+                            seccion: result.data.seccion || '',
+                            sexo: result.data.sexo || '',
+                            address: result.data.address || '',
+                            source: 'BACKEND_OCR'
+                        });
+                        setScanStatus('¡Datos extraídos!');
+                    } else {
+                        console.log("⚠️ Backend found no data");
+                        setScanStatus('No se detectó código');
+                    }
+                } catch (err) {
+                    console.error("❌ Backend error:", err);
+                    setScanStatus('Error de conexión');
+                }
+
+                setIsScanning(false);
             }
         }
     };
@@ -596,7 +631,7 @@ const Register = () => {
                         <span className="font-bold text-lg bg-gradient-to-r from-orange-500 to-pink-500 bg-clip-text text-transparent border-l border-gray-200 dark:border-slate-700 pl-2">
                             Registro
                         </span>
-                        <span className="text-[8px] text-gray-400 ml-1">v2.1</span>
+                        <span className="text-[8px] text-gray-400 ml-1">v2.2</span>
                     </div>
                     <div className="w-10" />
                 </div>

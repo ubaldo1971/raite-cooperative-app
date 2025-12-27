@@ -44,6 +44,7 @@ app.use('/api/admin', require('./routes/admin'));
 app.use('/api/ocr', require('./routes/ocr'));
 app.use('/api/commitments', require('./routes/commitments'));
 app.use('/api/settings', require('./routes/settings'));
+app.use('/api/decode-barcode', require('./routes/decode-barcode'));
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
