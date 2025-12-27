@@ -77,96 +77,54 @@ const Register = () => {
         }
     }, [webcamRef]);
 
-    // Capture back photo and immediately scan for barcode
-    const captureBack = async () => {
-        const imageSrc = webcamRef.current?.getScreenshot();
-        if (imageSrc) {
-            setCapturedImage(imageSrc);
 
-            // Stop live scanner
-            if (stopScanRef.current) {
-                stopScanRef.current();
-            }
 
-            // Immediately scan the captured image
-            setIsScanning(true);
-            setScanStatus('Analizando código...');
+    // Confirm front photo - NOW WITH AI DATA EXTRACTION
+    const confirmFront = async () => {
+        const imageToProcess = capturedImage;
+        setImages(prev => ({ ...prev, front: imageToProcess }));
 
-            const found = await scanBarcodeFromImage(imageSrc);
+        // Trigger AI extraction on the FRONT image
+        setIsScanning(true);
+        setScanStatus('Analizando datos (IA Frontal)...');
 
-            // Check if we found meaningful data (CURP/Name), or just verification URL
-            const hasFullData = scannedData?.curp || scannedData?.fullName;
-            const isVerificationOnly = found && !hasFullData && scannedData?.hasQrVerification;
+        try {
+            console.log("🧠 Sending FRONT image to Gemini...");
+            const response = await fetch('/api/decode-barcode', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: imageToProcess })
+            });
 
-            if (found && hasFullData) {
-                console.log("✅ Barcode data extracted locally (PDF417)");
-                setIsScanning(false);
+            const result = await response.json();
+            console.log("🧠 AI Response (Front):", result);
+
+            if (result.success && result.data?.dataFound) {
+                console.log("✅ Datos extraídos del FRENTE exitosamente");
+                setScannedData({
+                    fullName: result.data.fullName || '',
+                    curp: result.data.curp || '',
+                    claveElector: result.data.claveElector || '',
+                    fechaNacimiento: result.data.fechaNacimiento || '',
+                    seccion: result.data.seccion || '',
+                    sexo: result.data.sexo || '',
+                    address: result.data.address || '',
+                    source: 'FRONT_AI_GEMINI'
+                });
             } else {
-                if (isVerificationOnly) {
-                    console.log("⚠️ Local scan found verification QR but no personal data. Trying backend for OCR...");
-                    setScanStatus('Cargando datos del servidor...');
-                } else {
-                    console.log("⚠️ No local barcode found, trying backend...");
-                    setScanStatus('Procesando en servidor...');
-                }
-
-                // Call backend for OCR/barcode processing
-                try {
-                    const response = await fetch('/api/decode-barcode', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ image: imageSrc })
-                    });
-
-                    const result = await response.json();
-                    console.log("📡 Backend response:", result);
-
-                    if (result.success && result.data?.dataFound) {
-                        console.log("✅ Backend extracted data:", result.data);
-                        // Map backend response to our format
-                        setScannedData({
-                            fullName: result.data.fullName || '',
-                            curp: result.data.curp || '',
-                            claveElector: result.data.claveElector || '',
-                            fechaNacimiento: result.data.fechaNacimiento || '',
-                            seccion: result.data.seccion || '',
-                            sexo: result.data.sexo || '',
-                            address: result.data.address || '',
-                            source: 'BACKEND_OCR',
-                            // Preserve verification data if we had it
-                            hasQrVerification: scannedData?.hasQrVerification || false,
-                            verificationUrl: scannedData?.verificationUrl || ''
-                        });
-                        setScanStatus('¡Datos extraídos!');
-                    } else if (isVerificationOnly) {
-                        console.log("⚠️ Backend found no extra data. Keeping verification info.");
-                        setScanStatus('Verificada (Datos manuales)');
-                    } else {
-                        console.log("⚠️ Backend found no data");
-                        setScanStatus('No se detectó código');
-                    }
-                } catch (err) {
-                    console.error("❌ Backend error:", err);
-                    if (isVerificationOnly) {
-                        setScanStatus('Verificada (Datos manuales)');
-                    } else {
-                        setScanStatus('Error de conexión');
-                    }
-                }
-
-                setIsScanning(false);
+                console.warn("⚠️ AI no pudo leer datos del frente, intentaremos con el reverso");
             }
+        } catch (e) {
+            console.error("❌ Error AI Front:", e);
         }
-    };
 
-    // Confirm front photo and go to back
-    const confirmFront = () => {
-        setImages(prev => ({ ...prev, front: capturedImage }));
+        setIsScanning(false);
         setCapturedImage(null);
-        setStep(2);
+        setScanStatus(''); // Clear status
+        setStep(2); // Go to Back
     };
 
-    // Helper: Check if barcode content has useful data (not just a URL)
+    // Helper: Check if barcode content has useful data
     const isUsefulBarcodeContent = (rawValue) => {
         if (!rawValue || typeof rawValue !== 'string') return false;
 
@@ -275,88 +233,10 @@ const Register = () => {
                 if (img.parentNode) img.parentNode.removeChild(img);
             }
 
-            // Fallback to ZXing - Method 2: MultiFormat with hints
-            console.log("📷 Trying ZXing MultiFormat with hints...");
-            try {
-                const hints = new Map();
-                hints.set(DecodeHintType.POSSIBLE_FORMATS, [
-                    BarcodeFormat.PDF_417,
-                    BarcodeFormat.QR_CODE,
-                    BarcodeFormat.DATA_MATRIX,
-                    BarcodeFormat.AZTEC
-                ]);
-                hints.set(DecodeHintType.TRY_HARDER, true);
-
-                const reader = new BrowserMultiFormatReader(hints);
-                img.style.display = 'none';
-                if (!img.parentNode) document.body.appendChild(img);
-
-                const result = await reader.decodeFromImageElement(img);
-                document.body.removeChild(img);
-
-                if (result) {
-                    console.log("✅ MultiFormat with hints found:", result.getText()?.substring(0, 50));
-                    handleBarcodeDetected(result.getText(), result.getBarcodeFormat?.()?.toString() || 'unknown');
-                    return true;
-                }
-            } catch (zxingErr1) {
-                console.warn("ZXing MultiFormat failed:", zxingErr1.message);
-                if (img.parentNode) img.parentNode.removeChild(img);
-            }
-
-            // Fallback to ZXing - Method 2: decodeFromCanvas with enhanced contrast
-            console.log("🎨 Trying ZXing with canvas processing...");
-            try {
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-                canvas.width = img.width;
-                canvas.height = img.height;
-
-                // Draw original image
-                ctx.drawImage(img, 0, 0);
-
-                // Enhance contrast for better barcode detection
-                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                const data = imageData.data;
-                for (let i = 0; i < data.length; i += 4) {
-                    // Convert to grayscale
-                    const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-                    // Increase contrast
-                    const enhanced = avg > 128 ? 255 : 0;
-                    data[i] = data[i + 1] = data[i + 2] = enhanced;
-                }
-                ctx.putImageData(imageData, 0, 0);
-
-                const reader = new BrowserMultiFormatReader();
-                const result = await reader.decodeFromCanvas(canvas);
-
-                if (result) {
-                    console.log("✅ ZXing canvas method found:", result.getText()?.substring(0, 50));
-                    handleBarcodeDetected(result.getText(), result.getBarcodeFormat?.()?.toString() || 'unknown');
-                    return true;
-                }
-            } catch (zxingErr2) {
-                console.warn("ZXing canvas method failed:", zxingErr2.message);
-            }
-
-            // Fallback - Method 3: Try URL directly
-            console.log("🔗 Trying ZXing decodeFromImageUrl...");
-            try {
-                const reader = new BrowserMultiFormatReader();
-                const result = await reader.decodeFromImageUrl(imageSrc);
-                if (result) {
-                    console.log("✅ ZXing URL method found:", result.getText()?.substring(0, 50));
-                    handleBarcodeDetected(result.getText(), result.getBarcodeFormat?.()?.toString() || 'unknown');
-                    return true;
-                }
-            } catch (zxingErr3) {
-                console.warn("ZXing URL method failed:", zxingErr3.message);
-            }
-
             // If we have a QR URL from INE as fallback, use it (better than nothing)
             if (qrUrlFallback) {
                 console.log("📎 Using INE QR URL fallback:", qrUrlFallback);
-                // Parse the INE QR URL to extract what we can
+                // Parse the INE QR URL (just ensures we register that we saw a code)
                 handleBarcodeDetected(qrUrlFallback, 'QR_CODE_INE');
                 return true;
             }
@@ -369,136 +249,95 @@ const Register = () => {
         return false;
     };
 
-    // Start continuous scanning (background while showing camera)
-    const startBarcodeScanning = async () => {
-        setIsScanning(true);
-        setScanStatus('Buscando código...');
+    // ... [Inside Register component] ...
 
-        try {
-            // Only use native BarcodeDetector for continuous scanning
-            if ("BarcodeDetector" in window) {
-                const formats = ["qr_code", "pdf417", "aztec", "data_matrix"];
-                const detector = new window.BarcodeDetector({ formats });
+    // Capture back photo and immediately scan for barcode (Modified to preserve Front Data)
+    const captureBack = async () => {
+        const imageSrc = webcamRef.current?.getScreenshot();
+        if (imageSrc) {
+            setCapturedImage(imageSrc);
 
-                let stopped = false;
-                let frameCount = 0;
-
-                const tick = async () => {
-                    if (stopped || !webcamRef.current) return;
-                    frameCount++;
-
-                    if (frameCount % 10 !== 0) {
-                        requestAnimationFrame(tick);
-                        return;
-                    }
-
-                    try {
-                        const video = webcamRef.current.video;
-                        if (video && video.readyState === 4) {
-                            const bitmap = await createImageBitmap(video);
-                            const codes = await detector.detect(bitmap);
-
-                            if (codes?.length) {
-                                const best = codes.find(c =>
-                                    c.format?.toLowerCase() === 'pdf417' ||
-                                    c.format?.toLowerCase() === 'qr_code'
-                                ) || codes[0];
-
-                                setScanStatus('¡Código detectado!');
-                                handleBarcodeDetected(best.rawValue, best.format);
-                                stopped = true;
-                                return;
-                            }
-                        }
-                    } catch (e) {
-                        // Silently continue
-                    }
-
-                    requestAnimationFrame(tick);
-                };
-
-                requestAnimationFrame(tick);
-                stopScanRef.current = () => { stopped = true; };
-            } else {
-                // No native support - will scan on capture
-                console.log("📷 BarcodeDetector not available, will scan on capture");
-                setScanStatus('Captura para escanear');
+            // Stop live scanner
+            if (stopScanRef.current) {
+                stopScanRef.current();
             }
-        } catch (error) {
-            console.error("Scanner init error:", error);
-            setScanStatus('Captura para escanear');
+
+            // Immediately scan the captured image (Local only first)
+            setIsScanning(true);
+            setScanStatus('Verificando código...');
+
+            const found = await scanBarcodeFromImage(imageSrc);
+
+            // Check if we already have full data from Front AI
+            const hasFullData = scannedData?.curp || scannedData?.fullName;
+
+            if (hasFullData) {
+                console.log("ℹ️ We already have data from Front AI. Back scan is just for verification.");
+                // If we found a code (even verification only), great.
+                // If not, we don't really care as much since we have the data.
+                if (found) {
+                    setScanStatus('¡Código Verificado!');
+                } else {
+                    setScanStatus('Reverso guardado');
+                }
+
+                // Don't call backend if we already have data, unless we really want PDF417 override.
+                // For now, trust the Front AI if it succeeded.
+                setIsScanning(false);
+                return;
+            }
+
+            // IF WE DON'T HAVE DATA YET, proceed with backend fallback for Back image
+            if (found) {
+                console.log("✅ Barcode data extracted locally (PDF417)");
+                setIsScanning(false);
+            } else {
+                console.log("⚠️ No local barcode & No Front data. Trying backend for Back image...");
+                setScanStatus('Procesando al servidor...');
+
+                try {
+                    const response = await fetch('/api/decode-barcode', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ image: imageSrc })
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success && result.data?.dataFound) {
+                        setScannedData({
+                            fullName: result.data.fullName || '',
+                            curp: result.data.curp || '',
+                            claveElector: result.data.claveElector || '',
+                            fechaNacimiento: result.data.fechaNacimiento || '',
+                            seccion: result.data.seccion || '',
+                            sexo: result.data.sexo || '',
+                            address: result.data.address || '',
+                            source: 'BACKEND_OCR_BACK'
+                        });
+                        setScanStatus('¡Datos extraídos (Reverso)!');
+                    } else {
+                        setScanStatus('No se detectó código');
+                    }
+                } catch (err) {
+                    console.error("❌ Backend error:", err);
+                    setScanStatus('Error de conexión');
+                }
+
+                setIsScanning(false);
+            }
         }
     };
 
-    // Handle barcode detection
-    const handleBarcodeDetected = (rawValue, format) => {
-        console.log("📊 Barcode detected!");
-        console.log("📊 Format:", format);
-        console.log("📊 Raw value (full):", rawValue);
-        console.log("📊 Raw value length:", rawValue?.length);
-
-        // Parse the data
-        const parsed = parseInePayload(rawValue, format);
-        const formatted = formatForBackend(parsed);
-
-        console.log("📋 Parsed result:", parsed);
-        console.log("📋 Formatted data:", formatted);
-
-        // Even if parsing didn't get specific fields, store that we found a code
-        const dataToStore = {
-            ...formatted,
-            rawDetected: true,
-            rawValue: rawValue?.substring(0, 200), // Store first 200 chars for debugging
-            rawFormat: format
-        };
-
-        // If we got any useful data (CURP at minimum), use it
-        if (formatted.curp || formatted.fullName || formatted.claveElector) {
-            setScannedData(formatted);
-        } else {
-            // Store raw data so we can show something was detected
-            setScannedData(dataToStore);
-        }
-
-        setIsScanning(false);
-
-        // Detect document type based on data
-        if (formatted.curp && formatted.claveElector) {
-            setDocumentType('ine');
-        } else if (rawValue.toLowerCase().includes('licencia') || rawValue.includes('LIC')) {
-            setDocumentType('license');
-        } else {
-            setDocumentType('ine'); // Default to INE
-        }
-    };
-
-    // Confirm back photo - capture and scan for barcode
+    // Confirm back now just sets image and goes to step 3
     const confirmBack = async () => {
         const imageSrc = webcamRef.current?.getScreenshot() || capturedImage;
         setImages(prev => ({ ...prev, back: imageSrc }));
         setCapturedImage(null);
 
-        // Stop scanner if running
-        if (stopScanRef.current) {
-            stopScanRef.current();
-        }
+        if (stopScanRef.current) stopScanRef.current();
 
-        // If we haven't already scanned data, try to scan from the captured image
-        if (!scannedData && imageSrc) {
-            setScanStatus('Analizando imagen...');
-            setIsScanning(true);
-
-            const found = await scanBarcodeFromImage(imageSrc);
-            setIsScanning(false);
-
-            if (found) {
-                console.log("✅ Data extracted from back image");
-            } else {
-                console.log("⚠️ No barcode found in back image");
-            }
-        }
-
-        setStep(3); // Go to selfie
+        setStep(3);
     };
 
     // Capture and confirm selfie
@@ -624,8 +463,8 @@ const Register = () => {
 
     // Progress steps
     const progressSteps = [
-        { id: 1, label: 'Frente', icon: IdCard },
-        { id: 2, label: 'Reverso', icon: Scan },
+        { id: 1, label: 'Frente (Datos)', icon: IdCard },
+        { id: 2, label: 'Reverso (Verif)', icon: Scan },
         { id: 3, label: 'Selfie', icon: Camera },
         { id: 4, label: 'Datos', icon: FileCheck },
     ];
@@ -650,7 +489,7 @@ const Register = () => {
                         <span className="font-bold text-lg bg-gradient-to-r from-orange-500 to-pink-500 bg-clip-text text-transparent border-l border-gray-200 dark:border-slate-700 pl-2">
                             Registro
                         </span>
-                        <span className="text-[8px] text-gray-400 ml-1">v2.6</span>
+                        <span className="text-[8px] text-gray-400 ml-1">v2.7</span>
                     </div>
                     <div className="w-10" />
                 </div>

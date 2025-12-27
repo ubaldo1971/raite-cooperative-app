@@ -14,7 +14,7 @@ async function testDirect() {
         const payload = {
             contents: [{
                 parts: [
-                    { text: "Analiza esta imagen INE. Extrae JSON: {curp, fullName, dataFound: true}. Si falla, dataFound: false." },
+                    { text: "Analiza esta imagen (reverso INE). Intenta leer las líneas de texto OCR/MRZ en la parte inferior. Si logras leerlas, extrae el Nombre y Fecha de Nacimiento de ahí. Si no, busca cualquier texto legible. Responde JSON: {mrz_text: '', fullName: '', dataFound: true/false}" },
                     {
                         inline_data: {
                             mime_type: "image/jpeg",
