@@ -854,12 +854,30 @@ const Register = () => {
                                     )}
                                     {/* Success overlay */}
                                     {scannedData && (
-                                        <div className="absolute inset-0 bg-green-500/20 backdrop-blur-sm flex items-center justify-center">
-                                            <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-2xl text-center">
-                                                <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto mb-2" />
-                                                <p className="font-bold text-green-600 dark:text-green-400">¡Datos extraídos!</p>
-                                                {scannedData.curp && (
-                                                    <p className="text-xs text-gray-500 mt-1 font-mono">{scannedData.curp}</p>
+                                        <div className={`absolute inset-0 ${scannedData.curp || scannedData.fullName ? 'bg-green-500/20' : 'bg-yellow-500/20'} backdrop-blur-sm flex items-center justify-center`}>
+                                            <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-2xl text-center max-w-xs">
+                                                {scannedData.curp || scannedData.fullName ? (
+                                                    <>
+                                                        <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto mb-2" />
+                                                        <p className="font-bold text-green-600 dark:text-green-400">¡Datos extraídos!</p>
+                                                        {scannedData.curp && (
+                                                            <p className="text-xs text-gray-500 mt-1 font-mono">{scannedData.curp}</p>
+                                                        )}
+                                                    </>
+                                                ) : scannedData.hasQrVerification ? (
+                                                    <>
+                                                        <CheckCircle2 className="w-12 h-12 text-yellow-500 mx-auto mb-2" />
+                                                        <p className="font-bold text-yellow-600 dark:text-yellow-400">INE Verificada</p>
+                                                        <p className="text-xs text-gray-500 mt-1">QR de verificación detectado</p>
+                                                        <p className="text-xs text-gray-400 mt-2">Ingresa tus datos manualmente</p>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <AlertCircle className="w-12 h-12 text-yellow-500 mx-auto mb-2" />
+                                                        <p className="font-bold text-yellow-600 dark:text-yellow-400">Código detectado</p>
+                                                        <p className="text-xs text-gray-500 mt-1">No se pudieron extraer datos</p>
+                                                        <p className="text-xs text-gray-400 mt-2">Ingresa tus datos manualmente</p>
+                                                    </>
                                                 )}
                                             </div>
                                         </div>
@@ -870,10 +888,21 @@ const Register = () => {
 
                         {/* Data preview if scanned */}
                         {scannedData && (
-                            <div className="w-full bg-green-50 dark:bg-green-950/30 rounded-xl p-4 mb-4 border border-green-200 dark:border-green-800">
-                                <h4 className="font-bold text-green-700 dark:text-green-400 mb-2 flex items-center gap-2">
-                                    <CheckCircle2 className="w-4 h-4" />
-                                    Datos detectados
+                            <div className={`w-full rounded-xl p-4 mb-4 border ${scannedData.curp || scannedData.fullName
+                                ? 'bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800'
+                                : 'bg-yellow-50 dark:bg-yellow-950/30 border-yellow-200 dark:border-yellow-800'
+                                }`}>
+                                <h4 className={`font-bold mb-2 flex items-center gap-2 ${scannedData.curp || scannedData.fullName
+                                    ? 'text-green-700 dark:text-green-400'
+                                    : 'text-yellow-700 dark:text-yellow-400'
+                                    }`}>
+                                    {scannedData.curp || scannedData.fullName ? (
+                                        <><CheckCircle2 className="w-4 h-4" /> Datos detectados</>
+                                    ) : scannedData.hasQrVerification ? (
+                                        <><CheckCircle2 className="w-4 h-4" /> INE verificada via QR</>
+                                    ) : (
+                                        <><AlertCircle className="w-4 h-4" /> Código detectado</>
+                                    )}
                                 </h4>
                                 <div className="grid grid-cols-2 gap-2 text-sm">
                                     {scannedData.fullName && (
@@ -886,6 +915,23 @@ const Register = () => {
                                         <div className="col-span-2">
                                             <span className="text-gray-500 text-xs">CURP:</span>
                                             <p className="font-mono font-medium dark:text-white">{scannedData.curp}</p>
+                                        </div>
+                                    )}
+                                    {scannedData.hasQrVerification && !scannedData.curp && (
+                                        <div className="col-span-2">
+                                            <span className="text-gray-500 text-xs">URL de verificación:</span>
+                                            <p className="font-mono text-xs text-gray-600 dark:text-gray-400 break-all">{scannedData.verificationUrl}</p>
+                                            <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-2">
+                                                ⚠️ Ingresa tus datos manualmente en el siguiente paso
+                                            </p>
+                                        </div>
+                                    )}
+                                    {!scannedData.curp && !scannedData.fullName && !scannedData.hasQrVerification && (
+                                        <div className="col-span-2">
+                                            <p className="text-xs text-yellow-600 dark:text-yellow-400">
+                                                No se pudieron extraer datos del código.
+                                                Ingresa tus datos manualmente.
+                                            </p>
                                         </div>
                                     )}
                                 </div>
@@ -1003,6 +1049,14 @@ const Register = () => {
                                 <div>
                                     <p className="font-semibold text-green-700 dark:text-green-400">Datos extraídos del código</p>
                                     <p className="text-sm text-green-600 dark:text-green-500">Verifica que sean correctos</p>
+                                </div>
+                            </div>
+                        ) : scannedData?.hasQrVerification ? (
+                            <div className="bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800 rounded-xl p-4 flex items-start gap-3">
+                                <CheckCircle2 className="w-5 h-5 text-yellow-500 mt-0.5" />
+                                <div>
+                                    <p className="font-semibold text-yellow-700 dark:text-yellow-400">INE verificada vía QR</p>
+                                    <p className="text-sm text-yellow-600 dark:text-yellow-500">Ingresa tus datos personales manualmente</p>
                                 </div>
                             </div>
                         ) : (
