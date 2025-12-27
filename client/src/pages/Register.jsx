@@ -322,15 +322,34 @@ const Register = () => {
 
     // Handle barcode detection
     const handleBarcodeDetected = (rawValue, format) => {
-        console.log("📊 Barcode detected:", format, rawValue.substring(0, 100));
+        console.log("📊 Barcode detected!");
+        console.log("📊 Format:", format);
+        console.log("📊 Raw value (full):", rawValue);
+        console.log("📊 Raw value length:", rawValue?.length);
 
         // Parse the data
         const parsed = parseInePayload(rawValue, format);
         const formatted = formatForBackend(parsed);
 
-        console.log("📋 Parsed data:", formatted);
+        console.log("📋 Parsed result:", parsed);
+        console.log("📋 Formatted data:", formatted);
 
-        setScannedData(formatted);
+        // Even if parsing didn't get specific fields, store that we found a code
+        const dataToStore = {
+            ...formatted,
+            rawDetected: true,
+            rawValue: rawValue?.substring(0, 200), // Store first 200 chars for debugging
+            rawFormat: format
+        };
+
+        // If we got any useful data (CURP at minimum), use it
+        if (formatted.curp || formatted.fullName || formatted.claveElector) {
+            setScannedData(formatted);
+        } else {
+            // Store raw data so we can show something was detected
+            setScannedData(dataToStore);
+        }
+
         setIsScanning(false);
 
         // Detect document type based on data
