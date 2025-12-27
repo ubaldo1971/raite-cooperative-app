@@ -48,9 +48,17 @@ router.post('/', async (req, res) => {
 
                 const prompt = `
                 Analiza esta imagen (INE mexicana).
-                Extrae JSON estricto con: curp, fullName, claveElector, fechaNacimiento (DD/MM/AAAA), sexo, seccion, address.
-                Si no lees algo, déjalo vacío.
-                Responde SOLO JSON.
+                Extrae los siguientes datos en JSON estricto:
+                - "curp": La CURP (18 caracteres).
+                - "fullName": El NOMBRE COMPLETO. ¡OJO! En la INE, el nombre está dividido en 2 o 3 líneas (Apellido Paterno, Apellido Materno, Nombres). Debes UNIRLAS todas en un solo string (ej: "PEREZ LOPEZ JUAN"). No extraigas solo el primer apellido.
+                - "claveElector": Clave de elector (18 caracteres).
+                - "fechaNacimiento": Fecha de nacimiento (DD/MM/AAAA).
+                - "sexo": H o M.
+                - "seccion": Sección (4 números).
+                - "address": Dirección completa (Calle, Número, Colonia, CP, Municipio, Estado). Únela en un solo string.
+                
+                Si algún campo no es legible, déjalo como string vacío "".
+                Responde ÚNICAMENTE el objeto JSON.
                 `;
 
                 const result = await model.generateContent([

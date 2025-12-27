@@ -489,7 +489,7 @@ const Register = () => {
                         <span className="font-bold text-lg bg-gradient-to-r from-orange-500 to-pink-500 bg-clip-text text-transparent border-l border-gray-200 dark:border-slate-700 pl-2">
                             Registro
                         </span>
-                        <span className="text-[8px] text-gray-400 ml-1">v2.7</span>
+                        <span className="text-[8px] text-gray-400 ml-1">v2.8</span>
                     </div>
                     <div className="w-10" />
                 </div>
