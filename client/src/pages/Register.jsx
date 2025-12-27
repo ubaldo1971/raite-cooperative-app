@@ -117,47 +117,116 @@ const Register = () => {
         try {
             // Create an image element
             const img = new Image();
+            img.crossOrigin = 'anonymous';
             img.src = imageSrc;
             await new Promise((resolve, reject) => {
                 img.onload = resolve;
                 img.onerror = reject;
             });
 
-            // Try native BarcodeDetector first
+            console.log(`📐 Image loaded: ${img.width}x${img.height}`);
+
+            // Try native BarcodeDetector first (best quality)
             if ("BarcodeDetector" in window) {
-                console.log("📱 Using native BarcodeDetector");
-                const formats = ["qr_code", "pdf417", "aztec", "data_matrix"];
-                const detector = new window.BarcodeDetector({ formats });
-                const bitmap = await createImageBitmap(img);
-                const codes = await detector.detect(bitmap);
+                try {
+                    console.log("📱 Trying native BarcodeDetector...");
+                    const formats = ["qr_code", "pdf417", "aztec", "data_matrix"];
+                    const detector = new window.BarcodeDetector({ formats });
+                    const bitmap = await createImageBitmap(img);
+                    const codes = await detector.detect(bitmap);
 
-                if (codes?.length) {
-                    const best = codes.find(c =>
-                        c.format?.toLowerCase() === 'pdf417' ||
-                        c.format?.toLowerCase() === 'qr_code'
-                    ) || codes[0];
+                    if (codes?.length) {
+                        const best = codes.find(c =>
+                            c.format?.toLowerCase() === 'pdf417' ||
+                            c.format?.toLowerCase() === 'qr_code'
+                        ) || codes[0];
 
-                    console.log("✅ Code detected:", best.format);
-                    handleBarcodeDetected(best.rawValue, best.format);
-                    return true;
+                        console.log("✅ Native detector found:", best.format, best.rawValue?.substring(0, 50));
+                        handleBarcodeDetected(best.rawValue, best.format);
+                        return true;
+                    }
+                    console.log("⚠️ Native detector found no codes");
+                } catch (nativeErr) {
+                    console.warn("Native detector error:", nativeErr.message);
                 }
             }
 
-            // Fallback to ZXing from image
-            console.log("📷 Using ZXing fallback");
-            const reader = new BrowserMultiFormatReader();
+            // Fallback to ZXing - Method 1: decodeFromImageElement
+            console.log("📷 Trying ZXing decodeFromImageElement...");
+            try {
+                const reader = new BrowserMultiFormatReader();
+                // Add image to DOM temporarily for ZXing
+                img.style.display = 'none';
+                document.body.appendChild(img);
 
-            // Decode from image URL
-            const result = await reader.decodeFromImageUrl(imageSrc);
-            if (result) {
-                console.log("✅ ZXing detected code");
-                handleBarcodeDetected(result.getText(), result.getBarcodeFormat?.()?.toString() || 'unknown');
-                return true;
+                const result = await reader.decodeFromImageElement(img);
+                document.body.removeChild(img);
+
+                if (result) {
+                    console.log("✅ ZXing decodeFromImageElement found:", result.getText()?.substring(0, 50));
+                    handleBarcodeDetected(result.getText(), result.getBarcodeFormat?.()?.toString() || 'unknown');
+                    return true;
+                }
+            } catch (zxingErr1) {
+                console.warn("ZXing decodeFromImageElement failed:", zxingErr1.message);
+                // Remove img if still in DOM
+                if (img.parentNode) img.parentNode.removeChild(img);
             }
+
+            // Fallback to ZXing - Method 2: decodeFromCanvas with enhanced contrast
+            console.log("🎨 Trying ZXing with canvas processing...");
+            try {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = img.width;
+                canvas.height = img.height;
+
+                // Draw original image
+                ctx.drawImage(img, 0, 0);
+
+                // Enhance contrast for better barcode detection
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const data = imageData.data;
+                for (let i = 0; i < data.length; i += 4) {
+                    // Convert to grayscale
+                    const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                    // Increase contrast
+                    const enhanced = avg > 128 ? 255 : 0;
+                    data[i] = data[i + 1] = data[i + 2] = enhanced;
+                }
+                ctx.putImageData(imageData, 0, 0);
+
+                const reader = new BrowserMultiFormatReader();
+                const result = await reader.decodeFromCanvas(canvas);
+
+                if (result) {
+                    console.log("✅ ZXing canvas method found:", result.getText()?.substring(0, 50));
+                    handleBarcodeDetected(result.getText(), result.getBarcodeFormat?.()?.toString() || 'unknown');
+                    return true;
+                }
+            } catch (zxingErr2) {
+                console.warn("ZXing canvas method failed:", zxingErr2.message);
+            }
+
+            // Fallback - Method 3: Try URL directly
+            console.log("🔗 Trying ZXing decodeFromImageUrl...");
+            try {
+                const reader = new BrowserMultiFormatReader();
+                const result = await reader.decodeFromImageUrl(imageSrc);
+                if (result) {
+                    console.log("✅ ZXing URL method found:", result.getText()?.substring(0, 50));
+                    handleBarcodeDetected(result.getText(), result.getBarcodeFormat?.()?.toString() || 'unknown');
+                    return true;
+                }
+            } catch (zxingErr3) {
+                console.warn("ZXing URL method failed:", zxingErr3.message);
+            }
+
         } catch (error) {
-            console.warn("❌ Barcode scan failed:", error.message);
+            console.error("❌ Barcode scan failed:", error);
         }
 
+        console.log("❌ No barcode found after all attempts");
         return false;
     };
 
