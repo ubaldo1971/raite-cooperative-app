@@ -56,9 +56,15 @@ function looksLikeUrl(s) {
 
 /**
  * Parsea contenido del QR del INE
+ * Maneja tanto URLs de verificación como datos directos
  */
 function parseQrContent(text) {
     const upper = text.toUpperCase();
+
+    // Check if it's an INE verification URL (qr.ine.mx)
+    if (text.includes('qr.ine.mx')) {
+        return parseIneQrUrl(text);
+    }
 
     // El QR del INE normalmente contiene una URL de verificación
     // Intentamos extraer datos si los hay
@@ -69,6 +75,45 @@ function parseQrContent(text) {
         curp,
         clave_elector: claveElector,
     };
+}
+
+/**
+ * Parsea la URL de verificación del QR de INE
+ * Formato: http://qr.ine.mx/{id_numerico}/{fecha}/P/{codigo}
+ * Ejemplo: http://qr.ine.mx/056400506194702259994021/20240125/P/007799
+ */
+function parseIneQrUrl(url) {
+    const result = {
+        verification_url: url,
+        ine_id: null,
+        ine_date: null,
+        ine_code: null,
+    };
+
+    try {
+        // Parse URL parts
+        const parts = url.split('/');
+        // http://qr.ine.mx/ID/DATE/P/CODE
+        // parts: ['http:', '', 'qr.ine.mx', 'ID', 'DATE', 'P', 'CODE']
+
+        if (parts.length >= 7) {
+            result.ine_id = parts[3]; // Long numeric ID
+            result.ine_date = parts[4]; // Date like 20240125
+            result.ine_code = parts[6]; // Code like 007799
+
+            // Try to format the date nicely
+            if (result.ine_date && result.ine_date.length === 8) {
+                const year = result.ine_date.substring(0, 4);
+                const month = result.ine_date.substring(4, 6);
+                const day = result.ine_date.substring(6, 8);
+                result.formatted_date = `${day}/${month}/${year}`;
+            }
+        }
+    } catch (e) {
+        console.warn("Error parsing INE QR URL:", e);
+    }
+
+    return result;
 }
 
 /**
@@ -194,12 +239,17 @@ export function formatForBackend(parsed) {
         fullName: parsed.full_name || [parsed.apellido_paterno, parsed.apellido_materno, parsed.nombre].filter(Boolean).join(" ") || "",
         curp: parsed.curp || "",
         claveElector: parsed.clave_elector || "",
-        fechaNacimiento: parsed.fecha_nacimiento || "",
+        fechaNacimiento: parsed.fecha_nacimiento || parsed.formatted_date || "",
         seccion: parsed.seccion || "",
         sexo: parsed.sexo || "",
         address: parsed.address || "",
         source: parsed.source,
         rawData: parsed.raw,
         scannedAt: parsed.scanned_at,
+        // INE QR URL verification data
+        verificationUrl: parsed.verification_url || "",
+        ineId: parsed.ine_id || "",
+        ineCode: parsed.ine_code || "",
+        hasQrVerification: !!parsed.verification_url,
     };
 }

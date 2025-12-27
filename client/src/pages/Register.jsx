@@ -110,6 +110,25 @@ const Register = () => {
         setStep(2);
     };
 
+    // Helper: Check if barcode content has useful data (not just a URL)
+    const isUsefulBarcodeContent = (rawValue) => {
+        if (!rawValue || typeof rawValue !== 'string') return false;
+
+        // If it's a URL, it's not useful by itself (QR from INE just has verification URL)
+        if (rawValue.startsWith('http://') || rawValue.startsWith('https://')) {
+            console.log("⚠️ Detected URL-only content, not useful for data extraction");
+            return false;
+        }
+
+        // Check if it contains CURP pattern (18 chars with specific format)
+        const hasCurp = /[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d/.test(rawValue.toUpperCase());
+
+        // Check if it has enough alphanumeric content (PDF417 has lots of data)
+        const hasSubstantialData = rawValue.length > 50;
+
+        return hasCurp || hasSubstantialData;
+    };
+
     // Scan barcode from an image (more reliable than stream)
     const scanBarcodeFromImage = async (imageSrc) => {
         console.log("🔍 Scanning barcode from captured image...");
@@ -127,26 +146,51 @@ const Register = () => {
 
             console.log(`📐 Image loaded: ${img.width}x${img.height}`);
 
+            // Variable to store QR URL as fallback
+            let qrUrlFallback = null;
+
             // Try native BarcodeDetector first (best quality)
             if ("BarcodeDetector" in window) {
                 try {
                     console.log("📱 Trying native BarcodeDetector...");
-                    const formats = ["qr_code", "pdf417", "aztec", "data_matrix"];
+                    const formats = ["pdf417", "qr_code", "aztec", "data_matrix"]; // PDF417 first!
                     const detector = new window.BarcodeDetector({ formats });
                     const bitmap = await createImageBitmap(img);
                     const codes = await detector.detect(bitmap);
 
                     if (codes?.length) {
-                        const best = codes.find(c =>
-                            c.format?.toLowerCase() === 'pdf417' ||
-                            c.format?.toLowerCase() === 'qr_code'
-                        ) || codes[0];
+                        console.log(`📱 Native detector found ${codes.length} code(s)`);
 
-                        console.log("✅ Native detector found:", best.format, best.rawValue?.substring(0, 50));
-                        handleBarcodeDetected(best.rawValue, best.format);
-                        return true;
+                        // First priority: PDF417 with useful content
+                        const pdf417Code = codes.find(c =>
+                            c.format?.toLowerCase() === 'pdf417' &&
+                            isUsefulBarcodeContent(c.rawValue)
+                        );
+                        if (pdf417Code) {
+                            console.log("✅ PDF417 with useful data found!");
+                            handleBarcodeDetected(pdf417Code.rawValue, pdf417Code.format);
+                            return true;
+                        }
+
+                        // Second: Any code with useful content
+                        const usefulCode = codes.find(c => isUsefulBarcodeContent(c.rawValue));
+                        if (usefulCode) {
+                            console.log("✅ Useful barcode found:", usefulCode.format);
+                            handleBarcodeDetected(usefulCode.rawValue, usefulCode.format);
+                            return true;
+                        }
+
+                        // Store QR URL as fallback (for qr.ine.mx verification)
+                        const qrCode = codes.find(c =>
+                            c.format?.toLowerCase() === 'qr_code' &&
+                            c.rawValue?.includes('qr.ine.mx')
+                        );
+                        if (qrCode) {
+                            console.log("📎 Storing INE QR URL as fallback:", qrCode.rawValue);
+                            qrUrlFallback = qrCode.rawValue;
+                        }
                     }
-                    console.log("⚠️ Native detector found no codes");
+                    console.log("⚠️ Native detector: no useful data found, continuing...");
                 } catch (nativeErr) {
                     console.warn("Native detector error:", nativeErr.message);
                 }
@@ -163,10 +207,12 @@ const Register = () => {
                 const result = await pdf417Reader.decodeFromImageElement(img);
                 document.body.removeChild(img);
 
-                if (result) {
-                    console.log("✅ PDF417 Reader found:", result.getText()?.substring(0, 50));
+                if (result && isUsefulBarcodeContent(result.getText())) {
+                    console.log("✅ PDF417 Reader found useful data:", result.getText()?.substring(0, 50));
                     handleBarcodeDetected(result.getText(), 'PDF417');
                     return true;
+                } else if (result) {
+                    console.log("⚠️ PDF417 Reader found code but content not useful");
                 }
             } catch (pdf417Err) {
                 console.warn("PDF417 Reader failed:", pdf417Err.message);
@@ -249,6 +295,14 @@ const Register = () => {
                 }
             } catch (zxingErr3) {
                 console.warn("ZXing URL method failed:", zxingErr3.message);
+            }
+
+            // If we have a QR URL from INE as fallback, use it (better than nothing)
+            if (qrUrlFallback) {
+                console.log("📎 Using INE QR URL fallback:", qrUrlFallback);
+                // Parse the INE QR URL to extract what we can
+                handleBarcodeDetected(qrUrlFallback, 'QR_CODE_INE');
+                return true;
             }
 
         } catch (error) {
