@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Webcam from 'react-webcam';
-import { BrowserMultiFormatReader } from '@zxing/browser';
+import { BrowserMultiFormatReader, BrowserPDF417Reader } from '@zxing/browser';
+import { BarcodeFormat, DecodeHintType } from '@zxing/library';
 import { parseInePayload, formatForBackend } from '../utils/ineParser';
 import {
     Loader2, ArrowLeft, Shield, CheckCircle2, Camera,
@@ -151,25 +152,53 @@ const Register = () => {
                 }
             }
 
-            // Fallback to ZXing - Method 1: decodeFromImageElement
-            console.log("📷 Trying ZXing decodeFromImageElement...");
+            // Fallback to ZXing - Method 1: Dedicated PDF417 Reader (best for INE)
+            console.log("📊 Trying ZXing PDF417 dedicated reader...");
             try {
-                const reader = new BrowserMultiFormatReader();
+                const pdf417Reader = new BrowserPDF417Reader();
                 // Add image to DOM temporarily for ZXing
                 img.style.display = 'none';
                 document.body.appendChild(img);
+
+                const result = await pdf417Reader.decodeFromImageElement(img);
+                document.body.removeChild(img);
+
+                if (result) {
+                    console.log("✅ PDF417 Reader found:", result.getText()?.substring(0, 50));
+                    handleBarcodeDetected(result.getText(), 'PDF417');
+                    return true;
+                }
+            } catch (pdf417Err) {
+                console.warn("PDF417 Reader failed:", pdf417Err.message);
+                if (img.parentNode) img.parentNode.removeChild(img);
+            }
+
+            // Fallback to ZXing - Method 2: MultiFormat with hints
+            console.log("📷 Trying ZXing MultiFormat with hints...");
+            try {
+                const hints = new Map();
+                hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+                    BarcodeFormat.PDF_417,
+                    BarcodeFormat.QR_CODE,
+                    BarcodeFormat.DATA_MATRIX,
+                    BarcodeFormat.AZTEC
+                ]);
+                hints.set(DecodeHintType.TRY_HARDER, true);
+
+                const reader = new BrowserMultiFormatReader(hints);
+                img.style.display = 'none';
+                if (!img.parentNode) document.body.appendChild(img);
 
                 const result = await reader.decodeFromImageElement(img);
                 document.body.removeChild(img);
 
                 if (result) {
-                    console.log("✅ ZXing decodeFromImageElement found:", result.getText()?.substring(0, 50));
+                    console.log("✅ MultiFormat with hints found:", result.getText()?.substring(0, 50));
                     handleBarcodeDetected(result.getText(), result.getBarcodeFormat?.()?.toString() || 'unknown');
                     return true;
                 }
             } catch (zxingErr1) {
-                console.warn("ZXing decodeFromImageElement failed:", zxingErr1.message);
-                // Remove img if still in DOM
+                console.warn("ZXing MultiFormat failed:", zxingErr1.message);
                 if (img.parentNode) img.parentNode.removeChild(img);
             }
 
