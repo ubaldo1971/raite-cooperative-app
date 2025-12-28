@@ -65,10 +65,10 @@ router.post('/register-ine', async (req, res) => {
         // ===== VALIDATIONS =====
 
         // Required fields
-        if (!fullName || !curp) {
+        if (!fullName) {
             return res.status(400).json({
                 success: false,
-                message: 'Nombre completo y CURP son obligatorios'
+                message: 'Nombre completo es obligatorio'
             });
         }
 
@@ -315,10 +315,10 @@ router.post('/register-license', async (req, res) => {
 
         // ===== VALIDATIONS =====
 
-        if (!fullName || !curp || !licenseNumber) {
+        if (!fullName || !licenseNumber) {
             return res.status(400).json({
                 success: false,
-                message: 'Nombre, CURP y número de licencia son obligatorios'
+                message: 'Nombre y número de licencia son obligatorios'
             });
         }
 

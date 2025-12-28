@@ -498,7 +498,7 @@ const Register = () => {
                         <span className="font-bold text-lg bg-gradient-to-r from-orange-500 to-pink-500 bg-clip-text text-transparent border-l border-gray-200 dark:border-slate-700 pl-2">
                             Registro
                         </span>
-                        <span className="text-[8px] text-gray-400 ml-1">v3.0 (Manual)</span>
+                        <span className="text-[8px] text-gray-400 ml-1">v3.1 (Rápido)</span>
                     </div>
                     <div className="w-10" />
                 </div>
@@ -731,16 +731,8 @@ const Register = () => {
                                         placeholder="Ej: JUAN PÉREZ GARCÍA"
                                     />
                                 </div>
-                                <div>
-                                    <label className="text-sm font-medium text-gray-600 dark:text-gray-400">CURP</label>
-                                    <input
-                                        type="text"
-                                        value={scannedData?.curp || ''}
-                                        onChange={(e) => setScannedData(prev => ({ ...prev, curp: e.target.value.toUpperCase() }))}
-                                        className="w-full mt-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 font-mono dark:text-white"
-                                        maxLength={18}
-                                        placeholder="Ej: PEGJ850101HDFRRA09"
-                                    />
+                                <div className="hidden">
+                                    {/* CURP Removed for v3.1 efficiency */}
                                 </div>
                                 <div>
                                     <label className="text-sm font-medium text-gray-600 dark:text-gray-400">Dirección</label>
