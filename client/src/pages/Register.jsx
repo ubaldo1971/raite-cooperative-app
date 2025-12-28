@@ -348,9 +348,9 @@ const Register = () => {
         setStep(4); // Processing
 
         // Short processing state then go to form
-        setTimeout(() => {
-            setStep(5);
-        }, 1500);
+        setImages(prev => ({ ...prev, selfie: capturedImage }));
+        setCapturedImage(null);
+        setStep(4);
     };
 
     // Skip scanning and continue
@@ -472,8 +472,8 @@ const Register = () => {
 
     // Progress steps
     const progressSteps = [
-        { id: 1, label: 'Frente (Datos)', icon: IdCard },
-        { id: 2, label: 'Reverso (Verif)', icon: Scan },
+        { id: 1, label: 'Frente', icon: IdCard },
+        { id: 2, label: 'Reverso', icon: Scan },
         { id: 3, label: 'Selfie', icon: Camera },
         { id: 4, label: 'Datos', icon: FileCheck },
     ];
@@ -498,7 +498,7 @@ const Register = () => {
                         <span className="font-bold text-lg bg-gradient-to-r from-orange-500 to-pink-500 bg-clip-text text-transparent border-l border-gray-200 dark:border-slate-700 pl-2">
                             Registro
                         </span>
-                        <span className="text-[8px] text-gray-400 ml-1">v2.9</span>
+                        <span className="text-[8px] text-gray-400 ml-1">v3.0 (Manual)</span>
                     </div>
                     <div className="w-10" />
                 </div>
@@ -536,8 +536,8 @@ const Register = () => {
                                     <Fingerprint className="w-6 h-6 text-white" />
                                 </div>
                                 <div className="text-left">
-                                    <h2 className="text-xl font-black">Validemos tu Identidad</h2>
-                                    <p className="text-white/80 text-xs">Escaneo automático de código ✨</p>
+                                    <h2 className="text-xl font-black">Registro Simple</h2>
+                                    <p className="text-white/80 text-xs">Fotos + Datos Manuales</p>
                                 </div>
                             </div>
                         </div>
@@ -560,7 +560,7 @@ const Register = () => {
                                     <div className="w-10 h-10 mx-auto mb-1 bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-950/30 dark:to-purple-950/30 rounded-lg flex items-center justify-center">
                                         <span className="text-lg">📊</span>
                                     </div>
-                                    <p className="text-xs font-semibold text-gray-800 dark:text-white">Reverso + Código</p>
+                                    <p className="text-xs font-semibold text-gray-800 dark:text-white">Reverso</p>
                                 </div>
                                 <ChevronRight className="w-4 h-4 text-gray-300" />
                                 <div className="flex-1 text-center">
@@ -629,245 +629,53 @@ const Register = () => {
                     <div className="flex flex-col items-center animate-fade-in">
                         <div className="text-center mb-4">
                             <h3 className="text-2xl font-black mb-1 bg-gradient-to-r from-orange-500 to-pink-500 bg-clip-text text-transparent">
-                                Documento - Frente
+                                Frente
                             </h3>
-                            <p className="text-sm text-gray-500 dark:text-gray-400">Captura el frente de tu INE o Licencia</p>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">Toma una foto clara del frente</p>
                         </div>
-
                         <div className="relative w-full aspect-[3/2] bg-slate-100 dark:bg-slate-800 rounded-3xl overflow-hidden shadow-2xl border-4 border-white dark:border-slate-800 mb-6">
                             {!capturedImage ? (
-                                <>
-                                    <Webcam
-                                        audio={false}
-                                        ref={webcamRef}
-                                        screenshotFormat="image/jpeg"
-                                        screenshotQuality={0.95}
-                                        videoConstraints={videoConstraints}
-                                        className="w-full h-full object-cover"
-                                        key={useRearCamera ? 'rear' : 'front'}
-                                    />
-                                    <button
-                                        onClick={() => setUseRearCamera(!useRearCamera)}
-                                        className="absolute top-4 right-4 z-10 w-10 h-10 bg-black/50 backdrop-blur-sm rounded-full flex items-center justify-center text-white"
-                                    >
-                                        <RefreshCw className="w-5 h-5" />
-                                    </button>
-                                    {/* Corner guides */}
-                                    <div className="absolute inset-0 pointer-events-none">
-                                        <div className="absolute top-4 left-4 w-12 h-12 border-l-4 border-t-4 border-orange-500 rounded-tl-lg" />
-                                        <div className="absolute top-4 right-4 w-12 h-12 border-r-4 border-t-4 border-orange-500 rounded-tr-lg" />
-                                        <div className="absolute bottom-4 left-4 w-12 h-12 border-l-4 border-b-4 border-orange-500 rounded-bl-lg" />
-                                        <div className="absolute bottom-4 right-4 w-12 h-12 border-r-4 border-b-4 border-orange-500 rounded-br-lg" />
-                                    </div>
-                                </>
+                                <Webcam audio={false} ref={webcamRef} screenshotFormat="image/jpeg" videoConstraints={videoConstraints} className="w-full h-full object-cover" />
                             ) : (
-                                <img src={capturedImage} alt="captured" className="w-full h-full object-cover" />
+                                <img src={capturedImage} alt="front" className="w-full h-full object-cover" />
                             )}
                         </div>
-
                         <div className="flex space-x-6">
                             {!capturedImage ? (
-                                <button onClick={capture} className="flex flex-col items-center gap-2">
-                                    <div className="w-18 h-18 sm:w-20 sm:h-20 bg-gradient-to-br from-orange-500 to-pink-500 rounded-full text-white shadow-lg flex items-center justify-center hover:scale-110 active:scale-95 transition-all">
-                                        <Camera size={38} />
-                                    </div>
-                                    <span className="text-xs font-bold text-gray-500 tracking-wider">CAPTURAR</span>
-                                </button>
+                                <button onClick={capture} className="flex flex-col items-center gap-2"><div className="w-20 h-20 bg-gradient-to-br from-orange-500 to-pink-500 rounded-full text-white shadow-lg flex items-center justify-center"><Camera size={38} /></div><span className="text-xs font-bold text-gray-500">CAPTURAR</span></button>
                             ) : (
                                 <>
-                                    <button onClick={() => setCapturedImage(null)} className="flex flex-col items-center gap-2">
-                                        <div className="w-16 h-16 bg-white dark:bg-slate-800 border-2 border-gray-200 dark:border-slate-700 rounded-full text-gray-500 flex items-center justify-center hover:scale-110 active:scale-95 transition-all">
-                                            <RefreshCw size={24} />
-                                        </div>
-                                        <span className="text-xs font-bold text-gray-400 tracking-wider">REPETIR</span>
-                                    </button>
-                                    <button onClick={confirmFront} className="flex flex-col items-center gap-2">
-                                        <div className="w-20 h-20 bg-gradient-to-br from-green-500 to-teal-500 rounded-full text-white shadow-lg flex items-center justify-center hover:scale-110 active:scale-95 transition-all">
-                                            <Check size={42} />
-                                        </div>
-                                        <span className="text-xs font-bold text-green-500 tracking-wider">CONFIRMAR</span>
-                                    </button>
+                                    <button onClick={() => setCapturedImage(null)} className="flex flex-col items-center gap-2"><div className="w-16 h-16 bg-white dark:bg-slate-800 border-2 rounded-full text-gray-500 flex items-center justify-center"><RefreshCw size={24} /></div><span className="text-xs font-bold text-gray-400">REPETIR</span></button>
+                                    <button onClick={confirmFront} className="flex flex-col items-center gap-2"><div className="w-20 h-20 bg-gradient-to-br from-green-500 to-teal-500 rounded-full text-white shadow-lg flex items-center justify-center"><Check size={42} /></div><span className="text-xs font-bold text-green-500">LISTO</span></button>
                                 </>
                             )}
                         </div>
                     </div>
                 )}
 
-                {/* Step 2: Back Photo + Barcode Scan */}
+                {/* Step 2: Back Photo */}
                 {step === 2 && (
                     <div className="flex flex-col items-center animate-fade-in">
                         <div className="text-center mb-4">
-                            <h3 className="text-2xl font-black mb-1 bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent flex items-center justify-center gap-2">
-                                <Scan className="w-6 h-6 text-blue-500" />
-                                Documento - Reverso
+                            <h3 className="text-2xl font-black mb-1 bg-gradient-to-r from-blue-500 to-cyan-500 bg-clip-text text-transparent">
+                                Reverso
                             </h3>
-                            <p className="text-sm text-gray-500 dark:text-gray-400">
-                                Captura el reverso con el código de barras visible
-                            </p>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">Toma una foto clara del reverso</p>
                         </div>
-
-                        <div className="relative w-full aspect-[3/2] bg-slate-900 rounded-3xl overflow-hidden shadow-2xl border-4 border-slate-700 mb-6">
+                        <div className="relative w-full aspect-[3/2] bg-slate-100 dark:bg-slate-800 rounded-3xl overflow-hidden shadow-2xl border-4 border-white dark:border-slate-800 mb-6">
                             {!capturedImage ? (
-                                <>
-                                    <Webcam
-                                        audio={false}
-                                        ref={webcamRef}
-                                        screenshotFormat="image/jpeg"
-                                        screenshotQuality={0.95}
-                                        videoConstraints={videoConstraints}
-                                        className="w-full h-full object-cover"
-                                        onLoadedData={() => {
-                                            if (!isScanning && !scannedData) {
-                                                startBarcodeScanning();
-                                            }
-                                        }}
-                                    />
-                                    <button
-                                        onClick={() => setUseRearCamera(!useRearCamera)}
-                                        className="absolute top-4 right-4 z-10 w-10 h-10 bg-black/50 backdrop-blur-sm rounded-full flex items-center justify-center text-white"
-                                    >
-                                        <RefreshCw className="w-5 h-5" />
-                                    </button>
-                                    {/* Barcode guide */}
-                                    <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                                        <div className="w-64 h-32 border-2 border-blue-400 border-dashed rounded-xl flex items-center justify-center">
-                                            <span className="text-blue-400 text-xs bg-black/50 px-2 py-1 rounded">Código aquí</span>
-                                        </div>
-                                    </div>
-                                    {/* Scanning indicator */}
-                                    {isScanning && (
-                                        <div className="absolute bottom-4 left-0 right-0 text-center">
-                                            <span className="bg-blue-500/80 text-white px-4 py-2 rounded-full text-xs flex items-center justify-center gap-2 mx-auto w-max">
-                                                <Loader2 className="w-3 h-3 animate-spin" />
-                                                {scanStatus}
-                                            </span>
-                                        </div>
-                                    )}
-                                </>
+                                <Webcam audio={false} ref={webcamRef} screenshotFormat="image/jpeg" videoConstraints={videoConstraints} className="w-full h-full object-cover" />
                             ) : (
-                                <>
-                                    <img src={capturedImage} alt="back captured" className="w-full h-full object-cover" />
-                                    {/* Scanning status on captured image */}
-                                    {isScanning && (
-                                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                                            <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-2xl text-center">
-                                                <Loader2 className="w-10 h-10 text-blue-500 animate-spin mx-auto mb-3" />
-                                                <p className="font-bold text-gray-800 dark:text-white">Analizando código...</p>
-                                                <p className="text-xs text-gray-500 mt-1">Buscando datos en la imagen</p>
-                                            </div>
-                                        </div>
-                                    )}
-                                    {/* Success overlay */}
-                                    {scannedData && (
-                                        <div className={`absolute inset-0 ${scannedData.curp || scannedData.fullName ? 'bg-green-500/20' : 'bg-yellow-500/20'} backdrop-blur-sm flex items-center justify-center`}>
-                                            <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-2xl text-center max-w-xs">
-                                                {scannedData.curp || scannedData.fullName ? (
-                                                    <>
-                                                        <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto mb-2" />
-                                                        <p className="font-bold text-green-600 dark:text-green-400">¡Datos extraídos!</p>
-                                                        {scannedData.curp && (
-                                                            <p className="text-xs text-gray-500 mt-1 font-mono">{scannedData.curp}</p>
-                                                        )}
-                                                    </>
-                                                ) : scannedData.hasQrVerification ? (
-                                                    <>
-                                                        <CheckCircle2 className="w-12 h-12 text-yellow-500 mx-auto mb-2" />
-                                                        <p className="font-bold text-yellow-600 dark:text-yellow-400">INE Verificada</p>
-                                                        <p className="text-xs text-gray-500 mt-1">QR de verificación detectado</p>
-                                                        <p className="text-xs text-gray-400 mt-2">Ingresa tus datos manualmente</p>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <AlertCircle className="w-12 h-12 text-yellow-500 mx-auto mb-2" />
-                                                        <p className="font-bold text-yellow-600 dark:text-yellow-400">Código detectado</p>
-                                                        <p className="text-xs text-gray-500 mt-1">No se pudieron extraer datos</p>
-                                                        <p className="text-xs text-gray-400 mt-2">Ingresa tus datos manualmente</p>
-                                                    </>
-                                                )}
-                                            </div>
-                                        </div>
-                                    )}
-                                </>
+                                <img src={capturedImage} alt="back" className="w-full h-full object-cover" />
                             )}
                         </div>
-
-                        {/* Data preview if scanned */}
-                        {scannedData && (
-                            <div className={`w-full rounded-xl p-4 mb-4 border ${scannedData.curp || scannedData.fullName
-                                ? 'bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800'
-                                : 'bg-yellow-50 dark:bg-yellow-950/30 border-yellow-200 dark:border-yellow-800'
-                                }`}>
-                                <h4 className={`font-bold mb-2 flex items-center gap-2 ${scannedData.curp || scannedData.fullName
-                                    ? 'text-green-700 dark:text-green-400'
-                                    : 'text-yellow-700 dark:text-yellow-400'
-                                    }`}>
-                                    {scannedData.curp || scannedData.fullName ? (
-                                        <><CheckCircle2 className="w-4 h-4" /> Datos detectados</>
-                                    ) : scannedData.hasQrVerification ? (
-                                        <><CheckCircle2 className="w-4 h-4" /> INE verificada via QR</>
-                                    ) : (
-                                        <><AlertCircle className="w-4 h-4" /> Código detectado</>
-                                    )}
-                                </h4>
-                                <div className="grid grid-cols-2 gap-2 text-sm">
-                                    {scannedData.fullName && (
-                                        <div className="col-span-2">
-                                            <span className="text-gray-500 text-xs">Nombre:</span>
-                                            <p className="font-medium dark:text-white">{scannedData.fullName}</p>
-                                        </div>
-                                    )}
-                                    {scannedData.curp && (
-                                        <div className="col-span-2">
-                                            <span className="text-gray-500 text-xs">CURP:</span>
-                                            <p className="font-mono font-medium dark:text-white">{scannedData.curp}</p>
-                                        </div>
-                                    )}
-                                    {scannedData.hasQrVerification && !scannedData.curp && (
-                                        <div className="col-span-2">
-                                            <span className="text-gray-500 text-xs">URL de verificación:</span>
-                                            <p className="font-mono text-xs text-gray-600 dark:text-gray-400 break-all">{scannedData.verificationUrl}</p>
-                                            <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-2">
-                                                ⚠️ Ingresa tus datos manualmente en el siguiente paso
-                                            </p>
-                                        </div>
-                                    )}
-                                    {!scannedData.curp && !scannedData.fullName && !scannedData.hasQrVerification && (
-                                        <div className="col-span-2">
-                                            <p className="text-xs text-yellow-600 dark:text-yellow-400">
-                                                No se pudieron extraer datos del código.
-                                                Ingresa tus datos manualmente.
-                                            </p>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Capture/Confirm buttons */}
                         <div className="flex space-x-6">
                             {!capturedImage ? (
-                                <button onClick={captureBack} className="flex flex-col items-center gap-2">
-                                    <div className="w-18 h-18 sm:w-20 sm:h-20 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full text-white shadow-lg flex items-center justify-center hover:scale-110 active:scale-95 transition-all">
-                                        <Camera size={38} />
-                                    </div>
-                                    <span className="text-xs font-bold text-gray-500 tracking-wider">CAPTURAR</span>
-                                </button>
+                                <button onClick={captureBack} className="flex flex-col items-center gap-2"><div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-full text-white shadow-lg flex items-center justify-center"><Camera size={38} /></div><span className="text-xs font-bold text-gray-500">CAPTURAR</span></button>
                             ) : (
                                 <>
-                                    <button onClick={() => { setCapturedImage(null); setScannedData(null); }} className="flex flex-col items-center gap-2">
-                                        <div className="w-16 h-16 bg-white dark:bg-slate-800 border-2 border-gray-200 dark:border-slate-700 rounded-full text-gray-500 flex items-center justify-center hover:scale-110 active:scale-95 transition-all">
-                                            <RefreshCw size={24} />
-                                        </div>
-                                        <span className="text-xs font-bold text-gray-400 tracking-wider">REPETIR</span>
-                                    </button>
-                                    <button onClick={confirmBack} disabled={isScanning} className="flex flex-col items-center gap-2">
-                                        <div className={`w-20 h-20 rounded-full text-white shadow-lg flex items-center justify-center hover:scale-110 active:scale-95 transition-all ${isScanning ? 'bg-gray-400' : 'bg-gradient-to-br from-green-500 to-teal-500'}`}>
-                                            {isScanning ? <Loader2 size={32} className="animate-spin" /> : <Check size={42} />}
-                                        </div>
-                                        <span className="text-xs font-bold text-green-500 tracking-wider">
-                                            {isScanning ? 'ANALIZANDO' : 'CONFIRMAR'}
-                                        </span>
-                                    </button>
+                                    <button onClick={() => setCapturedImage(null)} className="flex flex-col items-center gap-2"><div className="w-16 h-16 bg-white dark:bg-slate-800 border-2 rounded-full text-gray-500 flex items-center justify-center"><RefreshCw size={24} /></div><span className="text-xs font-bold text-gray-400">REPETIR</span></button>
+                                    <button onClick={confirmBack} className="flex flex-col items-center gap-2"><div className="w-20 h-20 bg-gradient-to-br from-green-500 to-teal-500 rounded-full text-white shadow-lg flex items-center justify-center"><Check size={42} /></div><span className="text-xs font-bold text-green-500">LISTO</span></button>
                                 </>
                             )}
                         </div>
@@ -879,410 +687,177 @@ const Register = () => {
                     <div className="flex flex-col items-center animate-fade-in">
                         <div className="text-center mb-4">
                             <h3 className="text-2xl font-black mb-1 bg-gradient-to-r from-pink-500 to-purple-500 bg-clip-text text-transparent">
-                                Selfie de Verificación
+                                Selfie
                             </h3>
-                            <p className="text-sm text-gray-500 dark:text-gray-400">Centra tu rostro en el círculo</p>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">Tu foto de perfil</p>
                         </div>
-
                         <div className="relative w-full aspect-[4/3] bg-slate-100 dark:bg-slate-800 rounded-3xl overflow-hidden shadow-2xl border-4 border-white dark:border-slate-800 mb-6">
                             {!capturedImage ? (
-                                <>
-                                    <Webcam
-                                        audio={false}
-                                        ref={webcamRef}
-                                        screenshotFormat="image/jpeg"
-                                        screenshotQuality={0.95}
-                                        videoConstraints={{ ...videoConstraints, facingMode: { ideal: "user" } }}
-                                        className="w-full h-full object-cover"
-                                    />
-                                    {/* Face guide */}
-                                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-40 border-4 border-white/50 rounded-full pointer-events-none" />
-                                </>
+                                <Webcam audio={false} ref={webcamRef} screenshotFormat="image/jpeg" videoConstraints={{ ...videoConstraints, facingMode: { ideal: "user" } }} className="w-full h-full object-cover" />
                             ) : (
                                 <img src={capturedImage} alt="selfie" className="w-full h-full object-cover" />
                             )}
                         </div>
-
                         <div className="flex space-x-6">
                             {!capturedImage ? (
-                                <button onClick={capture} className="flex flex-col items-center gap-2">
-                                    <div className="w-18 h-18 sm:w-20 sm:h-20 bg-gradient-to-br from-pink-500 to-purple-500 rounded-full text-white shadow-lg flex items-center justify-center hover:scale-110 active:scale-95 transition-all">
-                                        <Camera size={38} />
-                                    </div>
-                                    <span className="text-xs font-bold text-gray-500 tracking-wider">CAPTURAR</span>
-                                </button>
+                                <button onClick={capture} className="flex flex-col items-center gap-2"><div className="w-20 h-20 bg-gradient-to-br from-pink-500 to-purple-500 rounded-full text-white shadow-lg flex items-center justify-center"><Camera size={38} /></div><span className="text-xs font-bold text-gray-500">CAPTURAR</span></button>
                             ) : (
                                 <>
-                                    <button onClick={() => setCapturedImage(null)} className="flex flex-col items-center gap-2">
-                                        <div className="w-16 h-16 bg-white dark:bg-slate-800 border-2 border-gray-200 dark:border-slate-700 rounded-full text-gray-500 flex items-center justify-center hover:scale-110 active:scale-95 transition-all">
-                                            <RefreshCw size={24} />
-                                        </div>
-                                        <span className="text-xs font-bold text-gray-400 tracking-wider">REPETIR</span>
-                                    </button>
-                                    <button onClick={confirmSelfie} className="flex flex-col items-center gap-2">
-                                        <div className="w-20 h-20 bg-gradient-to-br from-green-500 to-teal-500 rounded-full text-white shadow-lg flex items-center justify-center hover:scale-110 active:scale-95 transition-all">
-                                            <Check size={42} />
-                                        </div>
-                                        <span className="text-xs font-bold text-green-500 tracking-wider">CONFIRMAR</span>
-                                    </button>
+                                    <button onClick={() => setCapturedImage(null)} className="flex flex-col items-center gap-2"><div className="w-16 h-16 bg-white dark:bg-slate-800 border-2 rounded-full text-gray-500 flex items-center justify-center"><RefreshCw size={24} /></div><span className="text-xs font-bold text-gray-400">REPETIR</span></button>
+                                    <button onClick={confirmSelfie} className="flex flex-col items-center gap-2"><div className="w-20 h-20 bg-gradient-to-br from-green-500 to-teal-500 rounded-full text-white shadow-lg flex items-center justify-center"><Check size={42} /></div><span className="text-xs font-bold text-green-500">LISTO</span></button>
                                 </>
                             )}
                         </div>
                     </div>
                 )}
 
-                {/* Step 4: Processing */}
+                {/* Step 4: Manual Form */}
                 {step === 4 && (
-                    <div className="flex flex-col items-center justify-center min-h-[60vh]">
-                        <div className={`w-24 h-24 bg-gradient-to-br ${theme.from} ${theme.to} rounded-full flex items-center justify-center mb-6 animate-pulse`}>
-                            <Loader2 className="w-12 h-12 text-white animate-spin" />
-                        </div>
-                        <h2 className="text-xl font-bold mb-2 text-center dark:text-white">Procesando...</h2>
-                        <p className="text-gray-500 dark:text-gray-400 text-center">
-                            {scannedData ? 'Datos del código listos' : 'Preparando formulario'}
-                        </p>
-                    </div>
-                )}
-
-                {/* Step 5: Form - Verify Data */}
-                {step === 5 && (
-                    <div className="space-y-4 animate-fade-in">
-                        {/* Status banner */}
-                        {scannedData?.curp ? (
-                            <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-xl p-4 flex items-start gap-3">
-                                <CheckCircle2 className="w-5 h-5 text-green-500 mt-0.5" />
-                                <div>
-                                    <p className="font-semibold text-green-700 dark:text-green-400">Datos extraídos del código</p>
-                                    <p className="text-sm text-green-600 dark:text-green-500">Verifica que sean correctos</p>
-                                </div>
-                            </div>
-                        ) : scannedData?.hasQrVerification ? (
-                            <div className="bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800 rounded-xl p-4 flex items-start gap-3">
-                                <CheckCircle2 className="w-5 h-5 text-yellow-500 mt-0.5" />
-                                <div>
-                                    <p className="font-semibold text-yellow-700 dark:text-yellow-400">INE verificada vía QR</p>
-                                    <p className="text-sm text-yellow-600 dark:text-yellow-500">Ingresa tus datos personales manualmente</p>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-xl p-4 flex items-start gap-3">
-                                <AlertCircle className="w-5 h-5 text-orange-500 mt-0.5" />
-                                <div>
-                                    <p className="font-semibold text-orange-700 dark:text-orange-400">Ingresa tus datos manualmente</p>
-                                    <p className="text-sm text-orange-600 dark:text-orange-500">No se detectó código en el documento</p>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Form fields */}
-                        <div className="bg-white dark:bg-slate-900 rounded-xl p-5 border dark:border-slate-800 space-y-4">
-                            <h3 className="font-bold text-gray-800 dark:text-white flex items-center gap-2">
-                                <User className="w-4 h-4 text-orange-500" />
-                                {scannedData?.curp ? 'Verifica tu información' : 'Completa tu información'}
+                    <div className="space-y-6 animate-fade-in p-2">
+                        <div className="bg-white dark:bg-slate-900 rounded-xl p-6 border dark:border-slate-800 shadow-sm">
+                            <h3 className="font-bold text-lg mb-4 text-gray-800 dark:text-white flex items-center gap-2">
+                                <User className="w-5 h-5 text-orange-500" />
+                                Completa tus datos
                             </h3>
 
-                            <div>
-                                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">Nombre Completo</label>
-                                <input
-                                    type="text"
-                                    value={scannedData?.fullName || ''}
-                                    onChange={(e) => setScannedData(prev => ({ ...prev, fullName: e.target.value.toUpperCase() }))}
-                                    className="w-full mt-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 dark:text-white"
-                                    placeholder="Ej: JUAN PÉREZ GARCÍA"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">CURP</label>
-                                <input
-                                    type="text"
-                                    value={scannedData?.curp || ''}
-                                    onChange={(e) => setScannedData(prev => ({ ...prev, curp: e.target.value.toUpperCase() }))}
-                                    className="w-full mt-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 font-mono dark:text-white"
-                                    maxLength={18}
-                                    placeholder="Ej: PEGJ850101HDFRRA09"
-                                />
-                            </div>
-
-                            {/* Document photos preview */}
-                            <div className="flex gap-2 mt-4">
-                                {images.front && (
-                                    <div className="flex-1 relative">
-                                        <img src={images.front} alt="Frente" className="w-full h-16 object-cover rounded-lg" />
-                                        <span className="absolute bottom-1 left-1 text-xs bg-black/50 text-white px-1.5 py-0.5 rounded">Frente</span>
-                                    </div>
-                                )}
-                                {images.back && (
-                                    <div className="flex-1 relative">
-                                        <img src={images.back} alt="Reverso" className="w-full h-16 object-cover rounded-lg" />
-                                        <span className="absolute bottom-1 left-1 text-xs bg-black/50 text-white px-1.5 py-0.5 rounded">Reverso</span>
-                                    </div>
-                                )}
-                                {images.selfie && (
-                                    <div className="flex-1 relative">
-                                        <img src={images.selfie} alt="Selfie" className="w-full h-16 object-cover rounded-lg" />
-                                        <span className="absolute bottom-1 left-1 text-xs bg-black/50 text-white px-1.5 py-0.5 rounded">Selfie</span>
-                                    </div>
-                                )}
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-sm font-medium text-gray-600 dark:text-gray-400">Nombre Completo</label>
+                                    <input
+                                        type="text"
+                                        value={scannedData?.fullName || ''}
+                                        onChange={(e) => setScannedData(prev => ({ ...prev, fullName: e.target.value.toUpperCase() }))}
+                                        className="w-full mt-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 dark:text-white"
+                                        placeholder="Ej: JUAN PÉREZ GARCÍA"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-sm font-medium text-gray-600 dark:text-gray-400">CURP</label>
+                                    <input
+                                        type="text"
+                                        value={scannedData?.curp || ''}
+                                        onChange={(e) => setScannedData(prev => ({ ...prev, curp: e.target.value.toUpperCase() }))}
+                                        className="w-full mt-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 font-mono dark:text-white"
+                                        maxLength={18}
+                                        placeholder="Ej: PEGJ850101HDFRRA09"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-sm font-medium text-gray-600 dark:text-gray-400">Dirección</label>
+                                    <input
+                                        type="text"
+                                        value={scannedData?.address || ''}
+                                        onChange={(e) => setScannedData(prev => ({ ...prev, address: e.target.value.toUpperCase() }))}
+                                        className="w-full mt-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 dark:text-white"
+                                        placeholder="Calle, Número, Colonia, Ciudad"
+                                    />
+                                </div>
                             </div>
                         </div>
 
-                        <button
-                            onClick={() => setStep(6)}
-                            className={`w-full py-4 bg-gradient-to-r ${theme.from} ${theme.to} text-white rounded-xl font-bold hover:opacity-90`}
-                        >
-                            Continuar
-                        </button>
-                    </div>
-                )}
-
-                {/* Step 6: Contact Information */}
-                {step === 6 && (
-                    <div className="space-y-4 animate-fade-in">
-                        <div className="bg-gradient-to-br from-green-500 to-emerald-500 rounded-2xl p-4 mb-4 text-center text-white">
-                            <Mail className="w-12 h-12 mx-auto mb-2" />
-                            <h2 className="text-xl font-black">Datos de Contacto</h2>
-                            <p className="text-white/80 text-xs">Necesarios para tu cuenta</p>
-                        </div>
-
-                        <div className="bg-white dark:bg-slate-900 rounded-xl p-5 border dark:border-slate-800 space-y-4">
-                            <div>
-                                <label className="text-sm font-medium text-gray-600 dark:text-gray-400 flex items-center gap-2">
-                                    <Mail className="w-4 h-4" /> Email
-                                </label>
-                                <input
-                                    type="email"
-                                    value={contactData.email}
-                                    onChange={(e) => setContactData({ ...contactData, email: e.target.value })}
-                                    className={`w-full mt-1 px-4 py-3 rounded-xl border ${errors.email ? 'border-red-500' : 'border-gray-200 dark:border-slate-700'} bg-gray-50 dark:bg-slate-800 dark:text-white`}
-                                    placeholder="tucorreo@ejemplo.com"
-                                />
-                                {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
-                            </div>
-
-                            <div>
-                                <label className="text-sm font-medium text-gray-600 dark:text-gray-400 flex items-center gap-2">
-                                    <Phone className="w-4 h-4" /> Teléfono (10 dígitos)
-                                </label>
-                                <input
-                                    type="tel"
-                                    value={contactData.phone}
-                                    onChange={(e) => setContactData({ ...contactData, phone: e.target.value.replace(/\D/g, '') })}
-                                    maxLength={10}
-                                    className={`w-full mt-1 px-4 py-3 rounded-xl border ${errors.phone ? 'border-red-500' : 'border-gray-200 dark:border-slate-700'} bg-gray-50 dark:bg-slate-800 font-mono dark:text-white`}
-                                    placeholder="5512345678"
-                                />
-                                {errors.phone && <p className="text-red-500 text-xs mt-1">{errors.phone}</p>}
-                            </div>
-                        </div>
-
-                        <button
-                            onClick={validateContactData}
-                            className="w-full py-4 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-xl font-bold"
-                        >
-                            Continuar
-                        </button>
-                    </div>
-                )}
-
-                {/* Step 7: Password */}
-                {step === 7 && (
-                    <div className="space-y-4 animate-fade-in">
-                        <div className="bg-gradient-to-br from-purple-500 to-indigo-500 rounded-2xl p-4 mb-4 text-center text-white">
-                            <Lock className="w-12 h-12 mx-auto mb-2" />
-                            <h2 className="text-xl font-black">Crea tu Contraseña</h2>
-                            <p className="text-white/80 text-xs">Mínimo 8 caracteres, mayúscula, minúscula y número</p>
-                        </div>
-
-                        <div className="bg-white dark:bg-slate-900 rounded-xl p-5 border dark:border-slate-800 space-y-4">
-                            <div>
-                                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">Contraseña</label>
+                        <div className="bg-white dark:bg-slate-900 rounded-xl p-6 border dark:border-slate-800 shadow-sm">
+                            <h3 className="font-bold text-lg mb-4 text-gray-800 dark:text-white flex items-center gap-2">
+                                <Phone className="w-5 h-5 text-blue-500" />
+                                Contacto
+                            </h3>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-sm font-medium text-gray-600 dark:text-gray-400">Email</label>
+                                    <input
+                                        type="email"
+                                        value={contactData.email}
+                                        onChange={(e) => setContactData({ ...contactData, email: e.target.value })}
+                                        className={`w-full mt-1 px-4 py-3 rounded-xl border ${errors.email ? 'border-red-500' : 'border-gray-200 dark:border-slate-700'} bg-gray-50 dark:bg-slate-800 dark:text-white`}
+                                        placeholder="correo@ejemplo.com"
+                                    />
+                                    {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
+                                </div>
+                                <div>
+                                    <label className="text-sm font-medium text-gray-600 dark:text-gray-400">Teléfono</label>
+                                    <input
+                                        type="tel"
+                                        value={contactData.phone}
+                                        onChange={(e) => setContactData({ ...contactData, phone: e.target.value.replace(/\D/g, '') })}
+                                        maxLength={10}
+                                        className={`w-full mt-1 px-4 py-3 rounded-xl border ${errors.phone ? 'border-red-500' : 'border-gray-200 dark:border-slate-700'} bg-gray-50 dark:bg-slate-800 font-mono dark:text-white`}
+                                        placeholder="10 dígitos"
+                                    />
+                                    {errors.phone && <p className="text-red-500 text-xs mt-1">{errors.phone}</p>}
+                                </div>
                                 <div className="relative">
+                                    <label className="text-sm font-medium text-gray-600 dark:text-gray-400">Contraseña</label>
                                     <input
                                         type={passwordData.showPassword ? 'text' : 'password'}
                                         value={passwordData.password}
                                         onChange={(e) => setPasswordData({ ...passwordData, password: e.target.value })}
-                                        className={`w-full mt-1 px-4 py-3 pr-12 rounded-xl border ${errors.password ? 'border-red-500' : 'border-gray-200 dark:border-slate-700'} bg-gray-50 dark:bg-slate-800 dark:text-white`}
+                                        className={`w-full mt-1 px-4 py-3 rounded-xl border ${errors.password ? 'border-red-500' : 'border-gray-200 dark:border-slate-700'} bg-gray-50 dark:bg-slate-800 dark:text-white`}
                                     />
                                     <button
                                         type="button"
                                         onClick={() => setPasswordData({ ...passwordData, showPassword: !passwordData.showPassword })}
-                                        className="absolute right-3 top-1/2 -translate-y-1/2 mt-0.5"
+                                        className="absolute right-3 top-[34px]"
                                     >
                                         {passwordData.showPassword ? <EyeOff className="w-5 h-5 text-gray-400" /> : <Eye className="w-5 h-5 text-gray-400" />}
                                     </button>
+                                    {errors.password && <p className="text-red-500 text-xs mt-1">Mínimo 8 caracteres, mayúscula, minúscula y número.</p>}
                                 </div>
-                                {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
-                            </div>
-
-                            <div>
-                                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">Confirmar Contraseña</label>
-                                <input
-                                    type="password"
-                                    value={passwordData.confirmPassword}
-                                    onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
-                                    className={`w-full mt-1 px-4 py-3 rounded-xl border ${errors.confirmPassword ? 'border-red-500' : 'border-gray-200 dark:border-slate-700'} bg-gray-50 dark:bg-slate-800 dark:text-white`}
-                                />
-                                {errors.confirmPassword && <p className="text-red-500 text-xs mt-1">{errors.confirmPassword}</p>}
                             </div>
                         </div>
-
-                        <button
-                            onClick={validatePasswordData}
-                            className="w-full py-4 bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-xl font-bold"
-                        >
-                            Continuar
-                        </button>
-                    </div>
-                )}
-
-                {/* Step 8: Bank Data (Optional) */}
-                {step === 8 && (
-                    <div className="space-y-4 animate-fade-in">
-                        <div className="bg-gradient-to-br from-cyan-500 to-blue-500 rounded-2xl p-4 mb-4 text-center text-white">
-                            <CreditCard className="w-12 h-12 mx-auto mb-2" />
-                            <h2 className="text-xl font-black">Datos Bancarios</h2>
-                            <p className="text-white/80 text-xs">Opcional - Para depósitos y pagos</p>
+                        <div className="pt-6">
+                            <button
+                                onClick={submitRegistration}
+                                disabled={processing}
+                                className="w-full py-4 bg-gradient-to-r from-orange-500 to-pink-500 text-white rounded-xl font-bold shadow-lg hover:shadow-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                            >
+                                {processing ? (
+                                    <>
+                                        <Loader2 className="w-5 h-5 animate-spin" />
+                                        Registrando...
+                                    </>
+                                ) : (
+                                    <>
+                                        <CheckCircle2 className="w-6 h-6" />
+                                        COMPLETAR REGISTRO
+                                    </>
+                                )}
+                            </button>
+                            <p className="text-center text-[10px] text-gray-400 mt-4 px-4">
+                                Al dar clic en "Completar Registro" aceptas los <span className="text-blue-500">Términos y Condiciones</span> y el <span className="text-blue-500">Aviso de Privacidad</span> de RAITE Cooperativa.
+                            </p>
                         </div>
-
-                        <div className="bg-white dark:bg-slate-900 rounded-xl p-5 border dark:border-slate-800 space-y-4">
-                            <div>
-                                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">CLABE (18 dígitos)</label>
-                                <input
-                                    type="text"
-                                    value={bankData.clabe}
-                                    onChange={(e) => setBankData({ ...bankData, clabe: e.target.value.replace(/\D/g, '') })}
-                                    maxLength={18}
-                                    className={`w-full mt-1 px-4 py-3 rounded-xl border ${errors.clabe ? 'border-red-500' : 'border-gray-200 dark:border-slate-700'} bg-gray-50 dark:bg-slate-800 font-mono dark:text-white`}
-                                    placeholder="012345678901234567"
-                                />
-                                {errors.clabe && <p className="text-red-500 text-xs mt-1">{errors.clabe}</p>}
-                            </div>
-
-                            <div>
-                                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">Nombre del Banco</label>
-                                <input
-                                    type="text"
-                                    value={bankData.bankName}
-                                    onChange={(e) => setBankData({ ...bankData, bankName: e.target.value })}
-                                    className="w-full mt-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 dark:text-white"
-                                    placeholder="Ej: BBVA, Santander"
-                                />
-                            </div>
-                        </div>
-
-                        <button
-                            onClick={validateBankData}
-                            className="w-full py-4 bg-gradient-to-r from-cyan-500 to-blue-500 text-white rounded-xl font-bold"
-                        >
-                            Continuar
-                        </button>
-                        <button
-                            onClick={() => setStep(9)}
-                            className="w-full py-3 text-gray-600 dark:text-gray-400 text-sm"
-                        >
-                            Omitir por ahora
-                        </button>
-                    </div>
-                )}
-
-                {/* Step 9: Emergency Contact */}
-                {step === 9 && (
-                    <div className="space-y-4 animate-fade-in">
-                        <div className="bg-gradient-to-br from-red-500 to-rose-500 rounded-2xl p-4 mb-4 text-center text-white">
-                            <UserPlus className="w-12 h-12 mx-auto mb-2" />
-                            <h2 className="text-xl font-black">Contacto de Emergencia</h2>
-                            <p className="text-white/80 text-xs">En caso de ser necesario</p>
-                        </div>
-
-                        <div className="bg-white dark:bg-slate-900 rounded-xl p-5 border dark:border-slate-800 space-y-4">
-                            <div>
-                                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">Nombre Completo</label>
-                                <input
-                                    type="text"
-                                    value={emergencyContact.name}
-                                    onChange={(e) => setEmergencyContact({ ...emergencyContact, name: e.target.value })}
-                                    className="w-full mt-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 dark:text-white"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">Teléfono</label>
-                                <input
-                                    type="tel"
-                                    value={emergencyContact.phone}
-                                    onChange={(e) => setEmergencyContact({ ...emergencyContact, phone: e.target.value.replace(/\D/g, '') })}
-                                    maxLength={10}
-                                    className="w-full mt-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 font-mono dark:text-white"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">Relación</label>
-                                <select
-                                    value={emergencyContact.relation}
-                                    onChange={(e) => setEmergencyContact({ ...emergencyContact, relation: e.target.value })}
-                                    className="w-full mt-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 dark:text-white"
-                                >
-                                    <option value="">Seleccionar</option>
-                                    <option value="Padre/Madre">Padre/Madre</option>
-                                    <option value="Esposo/a">Esposo/a</option>
-                                    <option value="Hermano/a">Hermano/a</option>
-                                    <option value="Hijo/a">Hijo/a</option>
-                                    <option value="Amigo/a">Amigo/a</option>
-                                    <option value="Otro">Otro</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <button
-                            onClick={submitRegistration}
-                            disabled={processing}
-                            className="w-full py-4 bg-gradient-to-r from-orange-500 to-pink-500 text-white rounded-xl font-bold flex items-center justify-center gap-2"
-                        >
-                            {processing ? (
-                                <>
-                                    <Loader2 className="w-5 h-5 animate-spin" />
-                                    Registrando...
-                                </>
-                            ) : (
-                                <>
-                                    <CheckCircle2 className="w-5 h-5" />
-                                    Completar Registro
-                                </>
-                            )}
-                        </button>
                     </div>
                 )}
 
                 {/* Step 10: Pending Approval */}
-                {step === 10 && (
-                    <div className="flex flex-col items-center justify-center min-h-[60vh] text-center py-8 animate-fade-in">
-                        <div className="w-24 h-24 bg-yellow-100 dark:bg-yellow-950/30 rounded-full flex items-center justify-center mb-6">
-                            <Shield className="w-12 h-12 text-yellow-600 dark:text-yellow-400" />
-                        </div>
-                        <h2 className="text-2xl font-bold mb-2 dark:text-white">¡Registro Completado!</h2>
-                        <p className="text-gray-600 dark:text-gray-400 mb-6 max-w-md">
-                            Tu solicitud está siendo revisada. Te notificaremos cuando sea aprobada.
-                        </p>
-                        <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-xl p-4 mb-6 max-w-md">
-                            <p className="text-sm text-blue-700 dark:text-blue-400">
-                                <strong>Estado:</strong> Pendiente de Aprobación
+                {
+                    step === 10 && (
+                        <div className="flex flex-col items-center justify-center min-h-[60vh] text-center py-8 animate-fade-in">
+                            <div className="w-24 h-24 bg-yellow-100 dark:bg-yellow-950/30 rounded-full flex items-center justify-center mb-6">
+                                <Shield className="w-12 h-12 text-yellow-600 dark:text-yellow-400" />
+                            </div>
+                            <h2 className="text-2xl font-bold mb-2 dark:text-white">¡Registro Completado!</h2>
+                            <p className="text-gray-600 dark:text-gray-400 mb-6 max-w-md">
+                                Tu solicitud está siendo revisada. Te notificaremos cuando sea aprobada.
                             </p>
-                            <p className="text-xs text-blue-600 dark:text-blue-500 mt-2">
-                                Tiempo estimado: 24-48 horas
-                            </p>
+                            <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-xl p-4 mb-6 max-w-md">
+                                <p className="text-sm text-blue-700 dark:text-blue-400">
+                                    <strong>Estado:</strong> Pendiente de Aprobación
+                                </p>
+                                <p className="text-xs text-blue-600 dark:text-blue-500 mt-2">
+                                    Tiempo estimado: 24-48 horas
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => navigate('/')}
+                                className="px-8 py-3 bg-gradient-to-r from-orange-500 to-pink-500 text-white rounded-xl font-bold"
+                            >
+                                Ir a Inicio
+                            </button>
                         </div>
-                        <button
-                            onClick={() => navigate('/')}
-                            className="px-8 py-3 bg-gradient-to-r from-orange-500 to-pink-500 text-white rounded-xl font-bold"
-                        >
-                            Ir a Inicio
-                        </button>
-                    </div>
-                )}
-            </div>
-        </div>
+                    )
+                }
+            </div >
+        </div >
     );
 };
 
