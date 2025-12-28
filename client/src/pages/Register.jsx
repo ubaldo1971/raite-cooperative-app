@@ -8,7 +8,8 @@ import {
     Loader2, ArrowLeft, Shield, CheckCircle2, Camera,
     IdCard, User, Sparkles, ChevronRight, FileCheck,
     AlertCircle, Fingerprint, RefreshCw, Scan, Check,
-    Mail, Phone, Lock, CreditCard, UserPlus, Eye, EyeOff
+    Mail, Phone, Lock, CreditCard, UserPlus, Eye, EyeOff,
+    ArrowDownLeft
 } from 'lucide-react';
 import raiteLogo from '../assets/raite-logo.png';
 
