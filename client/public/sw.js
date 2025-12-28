@@ -1,4 +1,4 @@
-const CACHE_NAME = 'raite-v1';
+const CACHE_NAME = 'raite-v3.3';
 const urlsToCache = [
     '/',
     '/index.html',
