@@ -582,10 +582,10 @@ const Register = () => {
                         {/* Privacy Consent */}
                         <div className="bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-900/10 dark:to-purple-900/10 rounded-xl p-3 mb-4 border border-blue-100 dark:border-blue-900/30">
                             <div className="flex items-center gap-2 mb-2">
-                                <Shield className="w-4 h-4 text-blue-500" />
-                                <h4 className="font-semibold text-gray-800 dark:text-white text-xs">Aviso de Privacidad</h4>
+                                <Shield className="w-5 h-5 text-blue-500" />
+                                <h4 className="font-semibold text-gray-800 dark:text-white text-base">Aviso de Privacidad</h4>
                             </div>
-                            <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-3 leading-relaxed">
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-3 leading-relaxed">
                                 RAITE Cooperativa tratará tus datos (INE/Licencia, selfie) para verificar tu identidad y registrarte como socio.
                             </p>
                             <label className="flex items-center gap-2 cursor-pointer">
@@ -603,7 +603,7 @@ const Register = () => {
                                         {acceptedTerms && <CheckCircle2 className="w-3 h-3 text-white" />}
                                     </div>
                                 </div>
-                                <span className="text-xs text-gray-600 dark:text-gray-300">
+                                <span className="text-sm text-gray-600 dark:text-gray-300">
                                     Acepto el <span className="text-blue-500 font-semibold">Aviso de Privacidad</span>
                                 </span>
                             </label>
