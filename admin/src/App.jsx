@@ -1540,13 +1540,13 @@ const PhotoCard = ({ title, src }) => (
         {src ? (
             <>
                 <img
-                    src={`http://localhost:3000${src}`}
+                    src={src}
                     alt={title}
                     className="w-full rounded-lg mb-3 border border-slate-700"
                 />
                 <div className="flex gap-2">
                     <a
-                        href={`http://localhost:3000${src}`}
+                        href={src}
                         download
                         className="flex-1 flex items-center justify-center gap-2 bg-blue-500/20 text-blue-400 py-2 rounded-lg hover:bg-blue-500/30 text-sm"
                     >

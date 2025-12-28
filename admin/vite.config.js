@@ -12,6 +12,11 @@ export default defineConfig({
                 target: 'https://raitecoop.org',
                 changeOrigin: true,
                 secure: false
+            },
+            '/uploads': {
+                target: 'https://raitecoop.org',
+                changeOrigin: true,
+                secure: false
             }
         }
     }
