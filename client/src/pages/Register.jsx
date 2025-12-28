@@ -588,7 +588,12 @@ const Register = () => {
                             <p className="text-sm text-gray-500 dark:text-gray-400 mb-3 leading-relaxed">
                                 RAITE Cooperativa tratará tus datos (INE/Licencia, selfie) para verificar tu identidad y registrarte como socio.
                             </p>
-                            <label className="flex items-center gap-2 cursor-pointer">
+                            <label className="flex items-center gap-2 cursor-pointer relative">
+                                {!acceptedTerms && (
+                                    <div className="absolute -left-8 -top-8 animate-bounce text-orange-500 transform rotate-[-15deg] z-10">
+                                        <ArrowDownLeft className="w-8 h-8" />
+                                    </div>
+                                )}
                                 <div className="relative">
                                     <input
                                         type="checkbox"
@@ -596,15 +601,15 @@ const Register = () => {
                                         onChange={(e) => setAcceptedTerms(e.target.checked)}
                                         className="sr-only"
                                     />
-                                    <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${acceptedTerms
-                                        ? 'bg-gradient-to-br from-green-500 to-teal-500 border-green-500'
-                                        : 'border-orange-400 bg-white dark:bg-slate-800 animate-pulse'
+                                    <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all ${acceptedTerms
+                                        ? 'bg-green-500 border-green-500'
+                                        : 'border-orange-500 bg-white dark:bg-slate-800 animate-pulse shadow-[0_0_10px_rgba(249,115,22,0.5)]'
                                         }`}>
-                                        {acceptedTerms && <CheckCircle2 className="w-3 h-3 text-white" />}
+                                        {acceptedTerms && <CheckCircle2 className="w-4 h-4 text-white" />}
                                     </div>
                                 </div>
-                                <span className="text-sm text-gray-600 dark:text-gray-300">
-                                    Acepto el <span className="text-blue-500 font-semibold">Aviso de Privacidad</span>
+                                <span className={`text-sm font-medium transition-colors ${acceptedTerms ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-300'}`}>
+                                    Acepto el <span className={acceptedTerms ? 'text-green-600 dark:text-green-400 font-bold' : 'text-blue-500 font-bold'}>Aviso de Privacidad</span>
                                 </span>
                             </label>
                         </div>
@@ -612,14 +617,14 @@ const Register = () => {
                         <button
                             onClick={() => setStep(1)}
                             disabled={!acceptedTerms}
-                            className={`w-full py-3 rounded-xl font-bold shadow-lg transition-all flex items-center justify-center gap-2 ${acceptedTerms
-                                ? 'bg-gradient-to-r from-orange-500 to-pink-500 text-white hover:shadow-xl active:scale-[0.98]'
-                                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                            className={`w-full py-4 rounded-xl font-black text-lg shadow-xl transition-all flex items-center justify-center gap-2 transform ${acceptedTerms
+                                ? 'bg-gradient-to-r from-green-500 via-emerald-500 to-teal-500 text-white scale-[1.02] ring-4 ring-green-500/30'
+                                : 'bg-gradient-to-r from-gray-300 to-gray-400 text-gray-100 cursor-not-allowed opacity-80'
                                 }`}
                         >
-                            <Camera className="w-5 h-5" />
-                            {acceptedTerms ? 'Comenzar Registro' : 'Acepta para continuar'}
-                            {acceptedTerms && <ChevronRight className="w-5 h-5" />}
+                            <Camera className="w-6 h-6" />
+                            {acceptedTerms ? '¡ACEPTAR Y CONTINUAR!' : 'Acepta para continuar'}
+                            {acceptedTerms && <ChevronRight className="w-6 h-6" />}
                         </button>
                     </div>
                 )}
