@@ -411,7 +411,9 @@ const Register = () => {
         setProcessing(true);
 
         try {
-            const endpoint = documentType === 'license'
+            // Default to 'ine' if not set (since we prioritize Front AI now)
+            const typeToRegister = documentType || 'ine';
+            const endpoint = typeToRegister === 'license'
                 ? '/api/users/register-license'
                 : '/api/users/register-ine';
 
@@ -448,16 +450,23 @@ const Register = () => {
                 throw new Error(result.message || 'Error en el registro');
             }
 
+            // Success! Save token
             localStorage.setItem('token', result.token);
             localStorage.setItem('user', JSON.stringify(result.user));
             localStorage.setItem('userId', result.user.id);
 
             setProcessing(false);
-            setStep(10);
+            setStep(10); // Show success screen
+
+            // Auto-navigate to dashboard after 3 seconds
+            setTimeout(() => {
+                navigate('/dashboard');
+            }, 3000);
 
         } catch (err) {
+            console.error("Registration Error:", err);
             setProcessing(false);
-            alert(err.message || 'Error al registrar. Por favor intenta de nuevo.');
+            alert(`Error: ${err.message || 'No se pudo completar el registro.'}`);
         }
     };
 
@@ -489,7 +498,7 @@ const Register = () => {
                         <span className="font-bold text-lg bg-gradient-to-r from-orange-500 to-pink-500 bg-clip-text text-transparent border-l border-gray-200 dark:border-slate-700 pl-2">
                             Registro
                         </span>
-                        <span className="text-[8px] text-gray-400 ml-1">v2.8</span>
+                        <span className="text-[8px] text-gray-400 ml-1">v2.9</span>
                     </div>
                     <div className="w-10" />
                 </div>
