@@ -6,6 +6,13 @@ export default defineConfig({
     base: '/admin/',
     server: {
         port: 4000,
-        open: true
+        open: true,
+        proxy: {
+            '/api': {
+                target: 'https://raitecoop.org',
+                changeOrigin: true,
+                secure: false
+            }
+        }
     }
 })
