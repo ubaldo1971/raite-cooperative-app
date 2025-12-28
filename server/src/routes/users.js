@@ -80,7 +80,7 @@ router.post('/register-ine', async (req, res) => {
         }
 
         // Validate CURP format
-        if (!isValidCURP(curp)) {
+        if (curp && !isValidCURP(curp)) {
             return res.status(400).json({
                 success: false,
                 message: 'Formato de CURP inválido'
@@ -329,7 +329,7 @@ router.post('/register-license', async (req, res) => {
             });
         }
 
-        if (!isValidCURP(curp)) {
+        if (curp && !isValidCURP(curp)) {
             return res.status(400).json({
                 success: false,
                 message: 'Formato de CURP inválido'
