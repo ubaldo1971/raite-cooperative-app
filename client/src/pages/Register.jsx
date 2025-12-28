@@ -639,27 +639,9 @@ const Register = () => {
                             </h3>
                             <p className="text-sm text-gray-500 dark:text-gray-400">Toma una foto clara del frente</p>
                         </div>
-                        <div className="relative w-full aspect-[3/2] bg-slate-100 dark:bg-slate-800 rounded-3xl overflow-hidden shadow-2xl border-4 border-white dark:border-slate-800 mb-6 group">
+                        <div className="relative w-full aspect-[3/2] bg-slate-100 dark:bg-slate-800 rounded-3xl overflow-hidden shadow-2xl border-4 border-white dark:border-slate-800 mb-6">
                             {!capturedImage ? (
-                                <>
-                                    <Webcam audio={false} ref={webcamRef} screenshotFormat="image/jpeg" videoConstraints={videoConstraints} className="w-full h-full object-cover" />
-                                    {/* Camera Overlay */}
-                                    <div className="absolute inset-0 pointer-events-none">
-                                        {/* Vicera (Top Visor) */}
-                                        <div className="absolute top-0 left-0 right-0 h-16 bg-gradient-to-b from-black/60 to-transparent flex justify-center pt-2">
-                                            <div className="px-4 py-1 bg-black/40 backdrop-blur-sm rounded-full border border-white/20">
-                                                <span className="text-white/90 text-xs font-bold tracking-widest uppercase">FRENTE INE</span>
-                                            </div>
-                                        </div>
-                                        {/* Lados (Side Brackets) */}
-                                        <div className="absolute top-8 left-8 w-16 h-16 border-t-4 border-l-4 border-orange-500 rounded-tl-xl opacity-80" />
-                                        <div className="absolute top-8 right-8 w-16 h-16 border-t-4 border-r-4 border-orange-500 rounded-tr-xl opacity-80" />
-                                        <div className="absolute bottom-8 left-8 w-16 h-16 border-b-4 border-l-4 border-orange-500 rounded-bl-xl opacity-80" />
-                                        <div className="absolute bottom-8 right-8 w-16 h-16 border-b-4 border-r-4 border-orange-500 rounded-br-xl opacity-80" />
-                                        {/* Scan Line */}
-                                        <div className="absolute top-1/2 left-4 right-4 h-0.5 bg-orange-500/50 shadow-[0_0_15px_rgba(249,115,22,0.8)] animate-pulse" />
-                                    </div>
-                                </>
+                                <Webcam audio={false} ref={webcamRef} screenshotFormat="image/jpeg" videoConstraints={videoConstraints} className="w-full h-full object-cover" />
                             ) : (
                                 <img src={capturedImage} alt="front" className="w-full h-full object-cover" />
                             )}
@@ -686,27 +668,9 @@ const Register = () => {
                             </h3>
                             <p className="text-sm text-gray-500 dark:text-gray-400">Toma una foto clara del reverso</p>
                         </div>
-                        <div className="relative w-full aspect-[3/2] bg-slate-100 dark:bg-slate-800 rounded-3xl overflow-hidden shadow-2xl border-4 border-white dark:border-slate-800 mb-6 group">
+                        <div className="relative w-full aspect-[3/2] bg-slate-100 dark:bg-slate-800 rounded-3xl overflow-hidden shadow-2xl border-4 border-white dark:border-slate-800 mb-6">
                             {!capturedImage ? (
-                                <>
-                                    <Webcam audio={false} ref={webcamRef} screenshotFormat="image/jpeg" videoConstraints={videoConstraints} className="w-full h-full object-cover" />
-                                    {/* Camera Overlay */}
-                                    <div className="absolute inset-0 pointer-events-none">
-                                        {/* Vicera (Top Visor) */}
-                                        <div className="absolute top-0 left-0 right-0 h-16 bg-gradient-to-b from-black/60 to-transparent flex justify-center pt-2">
-                                            <div className="px-4 py-1 bg-black/40 backdrop-blur-sm rounded-full border border-white/20">
-                                                <span className="text-white/90 text-xs font-bold tracking-widest uppercase">REVERSO INE</span>
-                                            </div>
-                                        </div>
-                                        {/* Lados (Side Brackets) */}
-                                        <div className="absolute top-8 left-8 w-16 h-16 border-t-4 border-l-4 border-blue-500 rounded-tl-xl opacity-80" />
-                                        <div className="absolute top-8 right-8 w-16 h-16 border-t-4 border-r-4 border-blue-500 rounded-tr-xl opacity-80" />
-                                        <div className="absolute bottom-8 left-8 w-16 h-16 border-b-4 border-l-4 border-blue-500 rounded-bl-xl opacity-80" />
-                                        <div className="absolute bottom-8 right-8 w-16 h-16 border-b-4 border-r-4 border-blue-500 rounded-br-xl opacity-80" />
-                                        {/* Scan Line */}
-                                        <div className="absolute top-1/2 left-4 right-4 h-0.5 bg-blue-500/50 shadow-[0_0_15px_rgba(59,130,246,0.8)] animate-pulse" />
-                                    </div>
-                                </>
+                                <Webcam audio={false} ref={webcamRef} screenshotFormat="image/jpeg" videoConstraints={videoConstraints} className="w-full h-full object-cover" />
                             ) : (
                                 <img src={capturedImage} alt="back" className="w-full h-full object-cover" />
                             )}
@@ -733,27 +697,9 @@ const Register = () => {
                             </h3>
                             <p className="text-sm text-gray-500 dark:text-gray-400">Tu foto de perfil</p>
                         </div>
-                        <div className="relative w-full aspect-[4/3] bg-slate-100 dark:bg-slate-800 rounded-3xl overflow-hidden shadow-2xl border-4 border-white dark:border-slate-800 mb-6 group">
+                        <div className="relative w-full aspect-[4/3] bg-slate-100 dark:bg-slate-800 rounded-3xl overflow-hidden shadow-2xl border-4 border-white dark:border-slate-800 mb-6">
                             {!capturedImage ? (
-                                <>
-                                    <Webcam audio={false} ref={webcamRef} screenshotFormat="image/jpeg" videoConstraints={{ ...videoConstraints, facingMode: { ideal: "user" } }} className="w-full h-full object-cover" />
-                                    {/* Camera Overlay */}
-                                    <div className="absolute inset-0 pointer-events-none">
-                                        {/* Vicera (Top Visor) */}
-                                        <div className="absolute top-0 left-0 right-0 h-16 bg-gradient-to-b from-black/60 to-transparent flex justify-center pt-2">
-                                            <div className="px-4 py-1 bg-black/40 backdrop-blur-sm rounded-full border border-white/20">
-                                                <span className="text-white/90 text-xs font-bold tracking-widest uppercase">SELFIE / TU ROSTRO</span>
-                                            </div>
-                                        </div>
-                                        {/* Lados (Side Brackets) */}
-                                        <div className="absolute top-12 left-12 w-12 h-12 border-t-4 border-l-4 border-pink-500 rounded-tl-2xl opacity-80" />
-                                        <div className="absolute top-12 right-12 w-12 h-12 border-t-4 border-r-4 border-pink-500 rounded-tr-2xl opacity-80" />
-                                        <div className="absolute bottom-12 left-12 w-12 h-12 border-b-4 border-l-4 border-pink-500 rounded-bl-2xl opacity-80" />
-                                        <div className="absolute bottom-12 right-12 w-12 h-12 border-b-4 border-r-4 border-pink-500 rounded-br-2xl opacity-80" />
-                                        {/* Face Guide Circle */}
-                                        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-48 h-64 border-2 border-pink-500/30 rounded-[50%] shadow-[0_0_30px_rgba(236,72,153,0.3)]" />
-                                    </div>
-                                </>
+                                <Webcam audio={false} ref={webcamRef} screenshotFormat="image/jpeg" videoConstraints={{ ...videoConstraints, facingMode: { ideal: "user" } }} className="w-full h-full object-cover" />
                             ) : (
                                 <img src={capturedImage} alt="selfie" className="w-full h-full object-cover" />
                             )}
